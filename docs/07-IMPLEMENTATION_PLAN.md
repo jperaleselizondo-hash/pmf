@@ -29,6 +29,17 @@ Claude's initial read-only report confirms the PMF Git baseline but could not in
 3. Read-only: list workspaces; identify `pmf` by name and observed ID; list its branches; inspect schema/auth/API inventory using explicitly targeted workspace/profile arguments.
 4. Revisit physical schema proposals, especially native type/index support, evidence source fields, owner ID and deletion/review invariants. Report verified capabilities vs assumptions; request authorization before any data/schema/branch mutation.
 
+## Phase 1 verified inventory and auth preflight (2026-10-22)
+Claude verified via CLI with `-p pmf -w 2`: workspace **pmf** ID **2** on instance `xgjc-aodb-3a7q`; one live branch `v1`; only table `user` and Authentication API endpoints `auth/login`, `auth/me`, and public `auth/signup`. `allow_push` is disabled. User rows, owner identity, additional data-source environments, and permissions to disable signup were not inspected.
+
+**First milestone before schema writes (Batch 0):** confirm the owner account by inspecting user count/identity through a suitably limited administrative view without exposing password data; create owner account only if needed and separately authorized; verify owner login and `auth/me`; disable `auth/signup` **external access** (prefer reversible disabling over deleting). Confirm failed public signup and successful owner login. Do not expose secrets in terminal output or commit them.
+
+**Important owner guard:** `products.owner_user_id` is useful but insufficient to restrict a product to one person: any separately authenticated account could otherwise create its own product. Enforce a single designated owner user ID at the start of **every** PMF business endpoint, *plus* record ownership/product integrity checks. Existing unauthorized user rows or tokens must not gain access.
+
+**Schema strategy:** Keep physical schema on hold until auth preflight and explicit approval. Xano docs say API branches isolate business logic, not a separate dataset; Data Source Environments may separate records but share schema (availability to be checked). `allow_push` enabling is a **critical** CLI operation and is not automatically authorized; consider UI table creation versus tightly scoped CLI push with dry-run and diff after owner approval. Avoid records/env/truncate/sync-delete/force options.
+
+**Provisional schema review:** favor D1 and D2, D4 through D8, but **do not convert `insight_evidence.source_field` to an enum** without a compelling reason; validated text is more extensible. These are recommendations, not recorded approvals.
+
 ## Phase 2 design choices to settle after inspection
 - Xano ID/reference field types and naming conventions.
 - Owner auth identity, private data access pattern and permission enforcement.
