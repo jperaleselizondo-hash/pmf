@@ -22,5 +22,12 @@ This records design choices, not deployed features.
 | D-016 | 2026-10-22 | Git `xano/` XanoScript files are the schema source of truth and keep server-assigned `guid` lines | GUIDs let later partial pushes target the same tables instead of creating duplicates; server-side formatting differences (description→comment) are cosmetic |
 | D-017 | 2026-10-22 | Market physical schema conventions: plural table names; `text? x?` for nullable optional fields; `int … { table = … }` references (metadata only); `created_at?=now` and API-maintained `updated_at`; case-sensitive unique segment names; `sensitive=true` on customer `name`/`email` | Native Xano constructs confirmed by validator and server dry-run; integrity beyond types/enums/unique indexes is enforced in APIs |
 
+| D-018 | 2026-10-22 | Research survey `started_at` nullable | Permit wave draft creation; API requires start before any survey response |
+| D-019 | 2026-10-22 | Interview `notes` nullable | Transcript or alternatives/problem context may be original evidence; require meaningful content before citation |
+| D-020 | 2026-10-22 | Raw interview and survey answers remain untrimmed | Preserve first-hand wording; trim survey configuration fields instead |
+| D-021 | 2026-10-22 | Closed wave is read-only; explicit reopening required for corrections | Preserve a stable measurement window; no assertion of an audit log until implemented |
+| D-022 | 2026-10-22 | Category without `responded_at` invalid; `responded_at` without category allowed as partial | Separate survey participation from valid PMF denominator; report incomplete responses |
+| D-023 | 2026-10-22 | Do not enforce unique `survey_waves(product_id, name)` | Stable wave ID distinguishes repeated survey names |
+
 ## Open technical decisions
 Not yet decided: physical schema for the remaining seven business tables (Market conventions in D-017 are the default); dev/data-source isolation beyond live branch `v1`; frontend choice and, if Vercel, frontend framework; API naming; referential deletion semantics; finalized authentication policy; backup and release mechanism. Resolve after read-only environment inventory. Mark updates here with dated decisions and supporting test or rationale.
