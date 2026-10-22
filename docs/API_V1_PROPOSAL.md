@@ -719,3 +719,33 @@ Change vs R5: `pmf/db/unique_error` replaced by `pmf/util/patch_data` (duplicate
 - **Next gate:** read-only Xano Billing/plan confirmation of ephemeral-tenant entitlement and price. No charge-creating action or tenant creation is approved by this document.
 - **Later separate approvals:** one time-limited isolated-tenant creation; schema/auth/API push into that tenant only; fixture accounts/env; full runtime test suite and concurrency negative control; merging reviewed sources; setting live owner env var; live dry-run; separately approved interactive push; CLI-verified push disabled afterwards.
 - Existing `auth/login`, `auth/me`, `auth/signup` remain unchanged (U10).
+
+---
+
+# Appendix R9 — Testing protocol revision: existing PMF workspace (owner decision, Phase 3)
+
+**Supersedes** R2 U2, R4 (preferred environment), R7 items 2–4, the R8.5 test-safety protocol (including item 5 "run sweeps only in the isolated tenant, never in live") and the R8.5 status bullets "Next gate" (ephemeral billing/entitlement) and "Later separate approvals" (isolated-tenant creation, push into that tenant, negative control there), wherever they require an ephemeral tenant. The R8.5 rule "never run the negative-control variant against live" remains in force. Implementation, harness and exact operator commands live on `feat/api-v1`: `tests/README.md` and `docs/API_V1_RUNBOOK.md`.
+
+## R9.1 Decision
+The API is deployed to and tested in the existing workspace `pmf` (ID 2), branch `v1`, instance `xgjc-aodb-3a7q`. No other workspace, ephemeral tenant, sandbox or data source is created. Rationale (owner): PMF Engine is private and unused; its ten business tables are empty; all test records are synthetic and are purged afterwards. Goodz is never targeted (every CLI call pins `-p pmf -w 2`; Metadata API paths are pinned to `/workspace/2/table…`).
+
+## R9.2 Test safety protocol (replaces R8.5)
+1. **Explicit authorization**: `--target live-pmf` plus the exact phrase `synthetic-tests:xgjc-aodb-3a7q:workspace-2:pmf-app`. The default target remains deny-by-default (isolated tenant only; live host refused).
+2. **Fixed target**: business base `https://xgjc-aodb-3a7q.n7e.xano.io/api:pmf-app`, auth base `…/api:xHMmrw_d`; requests limited to the 48 inventory routes plus `GET auth/me`; redirects refused.
+3. **Authoritative identity (read-only)**: CLI profile `pmf` → instance `xgjc-aodb-3a7q`; workspace 2 = `pmf`; a read-only pull shows `PMF App` = `pmf-app` and `Authentication` = `xHMmrw_d`.
+4. **Empty tables**: Metadata API counts of all ten business tables must be zero before testing and again after the S01/S02 sweeps, before any fixture. Replies are validated fail-closed (integer `itemsTotal` ≥ 0, well-formed `items`, consistent pagination); the `user` table is never read.
+5. **Accounts**: the real designated owner (its `auth/me` id must equal the operator-supplied `PMF_TEST_OWNER_ID`, which also configures `PMF_OWNER_USER_ID`) and one synthetic non-owner (`@pmf-test.invalid`) created for testing.
+6. **S01/S02 gate** unchanged: failures abort before fixture creation. These sweeps now run against the live workspace. If authorization were broken they could write data; this is mitigated by synthetic sample bodies (`SYNTH-sweep`), the empty-table re-check immediately after the sweeps (abort before any fixture) and the cleanup procedure — residual risk accepted by the owner's decision.
+7. **Credentials** (owner/intruder tokens, Metadata API token) only in environment variables, never in Git; a ledger of created ids (no content) is kept outside the repository.
+
+## R9.3 Cleanup
+Dry run by default. All rows of the ten business tables must be provably synthetic (SYNTH- product of the owner; every child chained to it; synthetic customer names/emails) or nothing is deleted. Counts are re-checked immediately before deletion. Verified ids are deleted children-first; each delete must be confirmed by a follow-up read returning 404. Only the synthetic test user is removed (identified by its own `auth/me`; never the owner; never truncate). Final state: all ten tables contain zero rows.
+
+## R9.4 Deployment verification
+Live dry-run captured with its exit status (`set -o pipefail`); `tests/static/check_dry_run.py --cli-exit` requires workspace-2/instance/pmf identity and the exact CREATE inventory (PMF App/pmf-app, 34 functions, 48 endpoints) with no table, auth or unknown objects. If the preview cannot identify endpoints uniquely (no HTTP verbs), the result is "human review required", never "verified". Post-push read-back compares sources and proves pre-existing documents unchanged.
+
+## R9.5 Approvals still required (replaces the R8.5 approval list)
+Reviewed merge of `feat/api-v1` (and of this branch); owner sets live `PMF_OWNER_USER_ID`; owner creates the synthetic non-owner user and a scoped Metadata API token; temporary direct push for the live dry-run; separately approved interactive push; CLI-verified `allow_push: false` afterwards; live runtime test run; cleanup (dry run, then execute).
+
+## R9.6 Concurrency (U13) in the live workspace
+C01–C04 run as repeated barrier-synchronized trials with final-state invariants; any violation or insufficient overlap fails. The lock-free negative control is **not** run in the live workspace, so a pass shows no violation in the observed trials but does not prove detection power or that the no-op parent update locks; this residual risk must be reported, and accepted explicitly by the owner or addressed by a different lock strategy.
