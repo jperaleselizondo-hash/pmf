@@ -10,8 +10,13 @@ Required environment (never commit values):
   PMF_TEST_OWNER_TOKEN     token of the synthetic designated owner (email @pmf-test.invalid)
   PMF_TEST_INTRUDER_TOKEN  token of a second synthetic user (email @pmf-test.invalid)
 
-Usage:
+Usage (isolated ephemeral tenant — default target, deny-by-default):
   python3 tests/api/pmf_api_tests.py --confirm-tenant <name> [--skip-concurrency] [--trials 25] [--only W01,P01]
+
+Usage (owner-authorized synthetic testing in the existing pmf workspace 2 — see tests/README.md):
+  python3 tests/api/pmf_api_tests.py --target live-pmf --confirm-live synthetic-tests:xgjc-aodb-3a7q:workspace-2:pmf-app
+  extra environment: PMF_XANO_META_TOKEN (Workspace Content Read), PMF_TEST_OWNER_ID (verified owner id);
+  base/auth URLs must be exactly the fixed live values; all ten business tables must be empty.
 
 Preflight (aborts with exit 2 before any request with a write verb):
   1. configuration checks (live host denied; exact /api:pmf-app path; same host/branch; tenant confirmed)
@@ -32,6 +37,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import pmf_reference as ref  # noqa: E402
 from concurrency import gate, run_trials  # noqa: E402
 from http_client import Api, urllib_transport  # noqa: E402
+import live_target as live  # noqa: E402
 from safety import (UnsafeEnvironment, check_canary, check_config, check_tenant_metadata,  # noqa: E402
                     fetch_tenant_metadata)
 
@@ -104,11 +110,13 @@ def close(a, b, tol=1e-9):
 
 
 class Suite:
-    def __init__(self, base, auth_base, owner_token, intruder_token, tag, host, transport=urllib_transport, trials=25):
+    def __init__(self, base, auth_base, owner_token, intruder_token, tag, host, transport=urllib_transport, trials=25,
+                 allow_live=False, ledger=None):
         self.recorded = []
         self.requests = []
-        biz = dict(recorder=self.recorded, allowed_routes=ROUTES, transport=transport, log=self.requests, allowed_host=host)
-        auth = dict(recorder=self.recorded, allowed_routes=[("GET", "auth/me")], transport=transport, log=self.requests, allowed_host=host)
+        common = dict(recorder=self.recorded, transport=transport, log=self.requests, allowed_host=host, allow_live=allow_live)
+        biz = dict(common, allowed_routes=ROUTES, ledger=ledger)
+        auth = dict(common, allowed_routes=[("GET", "auth/me")])
         self.owner = Api(base, owner_token, **biz)
         self.intruder = Api(base, intruder_token, **biz)
         self.anon = Api(base, None, **biz)
@@ -841,7 +849,7 @@ GATE_EXIT = 3
 
 
 def preflight(env, confirm_tenant, metadata_provider=fetch_tenant_metadata):
-    """Configuration + authoritative tenant identity. No HTTP request is made here."""
+    """Isolated mode: configuration + authoritative tenant identity. No HTTP request is made here."""
     cfg = check_config(env.get("PMF_TEST_BASE_URL"), env.get("PMF_TEST_AUTH_URL"), env.get("PMF_TEST_TENANT_NAME"),
                        confirm_tenant, env.get("PMF_TEST_OWNER_TOKEN"), env.get("PMF_TEST_INTRUDER_TOKEN"))
     meta = metadata_provider(env["PMF_TEST_TENANT_NAME"])
@@ -849,23 +857,55 @@ def preflight(env, confirm_tenant, metadata_provider=fetch_tenant_metadata):
     return cfg
 
 
-def run_suite(env, confirm_tenant, *, transport=urllib_transport, metadata_provider=fetch_tenant_metadata,
+def preflight_live(env, confirm_live, cli_runner, meta_client):
+    """Authorized live-workspace mode: fixed target, CLI identity, deployed canonicals, empty business tables."""
+    owner_id = live.check_live_config(env, confirm_live)
+    live.verify_cli_identity(cli_runner)
+    live.verify_canonicals(cli_runner, require_business=True)
+    meta_client.resolve_tables()
+    live.require_empty(meta_client, "before testing")
+    return owner_id
+
+
+def run_suite(env, confirm_tenant=None, *, target="isolated", confirm_live=None, transport=urllib_transport,
+              metadata_provider=fetch_tenant_metadata, cli_runner=None, meta_client=None, ledger_path=None,
               skip_concurrency=False, only=(), trials=25, out=print):
     """Returns (exit_code, suite). Exit 2 = unsafe environment, 3 = S01/S02 gate failed, 1 = test failures."""
+    tag = time.strftime("%Y%m%d%H%M%S")
+    is_live = target == "live-pmf"
+    if target not in ("isolated", "live-pmf"):
+        out(f"ABORT (preflight): unknown target {target}")
+        return 2, None
     try:
-        cfg = preflight(env, confirm_tenant, metadata_provider)
+        if is_live:
+            import subprocess
+            meta_client = meta_client or live.MetaClient(env.get("PMF_XANO_META_TOKEN"), transport)
+            owner_id = preflight_live(env, confirm_live, cli_runner or subprocess.run, meta_client)
+            host = live.LIVE_HOST
+        else:
+            if confirm_live is not None:
+                raise UnsafeEnvironment("--confirm-live is only valid with --target live-pmf")
+            host = preflight(env, confirm_tenant, metadata_provider)["host"]
     except UnsafeEnvironment as exc:
         out(f"ABORT (preflight): {exc}")
         return 2, None
+
+    ledger = None
+    if is_live:
+        ledger = live.Ledger(ledger_path or live.default_ledger_path(tag), tag)
+        out(f"LEDGER {ledger.path}  (created record ids; keep until cleanup is verified)")
     s = Suite(env["PMF_TEST_BASE_URL"], env["PMF_TEST_AUTH_URL"], env["PMF_TEST_OWNER_TOKEN"],
-              env["PMF_TEST_INTRUDER_TOKEN"], time.strftime("%Y%m%d%H%M%S"), cfg["host"], transport, trials)
+              env["PMF_TEST_INTRUDER_TOKEN"], tag, host, transport, trials, allow_live=is_live, ledger=ledger)
     try:
         owner_me = s.owner_auth.call("GET", "auth/me")
         intruder_me = s.intruder_auth.call("GET", "auth/me")
         products = s.owner.call("GET", "products", params={"per_page": 100})
         if owner_me.status != 200 or intruder_me.status != 200 or products.status != 200:
             raise UnsafeEnvironment(f"canary requests failed: {owner_me.status}/{intruder_me.status}/{products.status}")
-        check_canary(owner_me.body, intruder_me.body, products.body)
+        if is_live:
+            live.check_live_canary(owner_me.body, intruder_me.body, products.body, owner_id)
+        else:
+            check_canary(owner_me.body, intruder_me.body, products.body)
     except UnsafeEnvironment as exc:
         out(f"ABORT (canary): {exc}")
         return 2, s
@@ -876,13 +916,24 @@ def run_suite(env, confirm_tenant, *, transport=urllib_transport, metadata_provi
     if gate_failures:
         for tid, status, desc, detail in gate_failures:
             out(f"{status:5} {tid:4} {desc} {detail}")
-        out("ABORT (gate): S01/S02 failed; no fixture or business data was created")
+        out("ABORT (gate): S01/S02 failed; no fixture was created")
+        if is_live:
+            out("RECOVERY: run tests/api/cleanup_live.py (dry-run first) — a failed sweep may have written data")
         return GATE_EXIT, s
+    if is_live:
+        try:
+            live.require_empty(meta_client, "after the S01/S02 sweeps")
+        except UnsafeEnvironment as exc:
+            out(f"ABORT (gate): {exc}")
+            out("RECOVERY: run tests/api/cleanup_live.py (dry-run first)")
+            return GATE_EXIT, s
 
     try:
         s.build_fixture()
     except Exception as exc:  # noqa: BLE001
         out(f"FIXTURE FAILED: {exc}")
+        if is_live:
+            out("RECOVERY: run tests/api/cleanup_live.py (dry-run first)")
         return 1, s
     selected = set(only)
     s.run([by_id[t] for t in RUN_ORDER if not (skip_concurrency and t.startswith("C"))], selected or None)
@@ -894,6 +945,10 @@ def run_suite(env, confirm_tenant, *, transport=urllib_transport, metadata_provi
         out(f"MANUAL {tid:4} {desc}")
     if skip_concurrency:
         out("NOTE  concurrency gate C01–C04 skipped: this run cannot authorize deployment (U13)")
+    if is_live:
+        out("NOTE  live workspace: lock negative control NOT run (not permitted here); a passing C01–C04 shows no "
+            "violation in the observed trials but does not prove the suite can detect a race (residual risk)")
+        out("NEXT  synthetic records remain until tests/api/cleanup_live.py --execute is run and verified")
     failed = [r for r in s.results if r[1] != "PASS"]
     out(f"\n{len(s.results) - len(failed)} passed, {len(failed)} failed/error, {len(MANUAL)} manual")
     return (1 if failed else 0), s
@@ -901,7 +956,10 @@ def run_suite(env, confirm_tenant, *, transport=urllib_transport, metadata_provi
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--confirm-tenant", required=True)
+    parser.add_argument("--target", choices=["isolated", "live-pmf"], default="isolated")
+    parser.add_argument("--confirm-tenant", help="isolated target: ephemeral tenant name")
+    parser.add_argument("--confirm-live", help=f"live-pmf target: must be exactly {live.CONFIRM_PHRASE}")
+    parser.add_argument("--ledger", help="live-pmf target: ledger path (default ~/.pmf-test-runs/run-<tag>.jsonl)")
     parser.add_argument("--skip-concurrency", action="store_true")
     parser.add_argument("--trials", type=int, default=25)
     parser.add_argument("--only", default="")
@@ -909,7 +967,10 @@ def main():
     if args.trials < 10:
         parser.error("--trials must be at least 10 for the concurrency gate")
     only = [t.strip() for t in args.only.split(",") if t.strip()]
-    code, _ = run_suite(os.environ, args.confirm_tenant, skip_concurrency=args.skip_concurrency, only=only, trials=args.trials)
+    if args.target == "isolated" and not args.confirm_tenant:
+        parser.error("--confirm-tenant is required for the isolated target")
+    code, _ = run_suite(os.environ, args.confirm_tenant, target=args.target, confirm_live=args.confirm_live,
+                        ledger_path=args.ledger, skip_concurrency=args.skip_concurrency, only=only, trials=args.trials)
     return code
 
 
