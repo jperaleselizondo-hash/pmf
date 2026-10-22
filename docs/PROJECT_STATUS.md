@@ -1,7 +1,7 @@
 # Project Status
 
 **Date:** 2026-10-22
-**Milestone:** Phase 2 preparation — owner created; signup lockdown and first schema batch pending
+**Milestone:** Phase 2 Batch 1 local Market schema drafted; server dry-run and signup lockdown pending
 **Product build:** Xano workspace `pmf` (ID 2) inspected by Claude; owner user created and auth endpoints reported working by user; no PMF business tables, business APIs or frontend implemented
 **Production:** No PMF Engine application deployed
 
@@ -51,8 +51,17 @@
 - User successfully synchronized local `pmf` repository with GitHub `main` at `f705787` before this update.
 - User wants to proceed with table implementation. First target: `products`, `segments`, `customers`, schema only, no test data or business APIs. CLI `allow_push` remains off until a separate controlled authorization.
 
+## Phase 2 Batch 1 report (Claude, 2026-10-22)
+- Claude wrote only **scratchpad** XanoScript definitions: `products.xs`, `segments.xs`, `customers.xs`. All three passed offline syntax validation (Xano developer validator v2.2.6); files are **not in Git** or Xano yet.
+- Intended indexes: `products.owner_user_id`; unique `segments(product_id,name)`; unique `customers(product_id,external_id)` plus additional lookup indexes.
+- The local negative control with an invalid enum default was not caught; offline validation is not sufficient for semantic or database behavior checks.
+- Xano server dry-run is **blocked** because `allow_push=false`; Claude stopped. No remote schema changes occurred.
+- Architecture review recommendations (not deployed): keep case-sensitive segment name uniqueness for V1, normalize blank `external_id` to null in future APIs, keep `sensitive=true` fields but do not assume this enforces API access control, and enforce cross-product references in the API.
+- Recommended path: save only these three XanoScript files in an isolated repository folder and commit; independently verify `auth/signup` External Access disabled and login unaffected; after approval temporarily enable direct CLI push; run **dry-run only**, require exactly 3 additions/0 updates/0 deletes; get a **separate approval** before the real push with interactive confirmation and no force/sync/delete/records/env/truncate.
+- Avoid Xano's account-level sandbox reset or promotion if it may affect an unrelated Goodz sandbox. Direct push bypasses Xano's default sandbox review and therefore requires particularly strict scope.
+
 ## One next action
-After reversible signup lockdown, have Claude prepare the exact local XanoScript definitions for the three Market tables, with validated field types/indexes and no records/APIs. Review an isolated CLI dry-run/diff before allowing any actual push. Do not enable CLI push, perform broad sync/delete, or touch another workspace without explicit approval.
+Copy validated Market table definitions from Claude's scratchpad into `xano/market/table/` in the project repository and commit **source files only**. No Xano push, settings changes or production deployment. Meanwhile the user should turn off External Access on `auth/signup` and verify that login still works. Only then consider granting a brief direct-push setting change to obtain the server dry-run.
 
 ## Approved-stack status
 Xano selected; frontend still undecided between WeWeb and a coded frontend deployed on Vercel.
