@@ -1,7 +1,7 @@
 # Project Status
 
 **Date:** 2026-10-22
-**Milestone:** Phase 2 Batch 1 Market XanoScript committed; server dry-run and signup lockdown pending
+**Milestone:** Phase 2 Batch 1 server dry-run passed; real push pending
 **Product build:** Xano workspace `pmf` (ID 2) inspected by Claude; owner user created and auth endpoints reported working by user; no PMF business tables, business APIs or frontend implemented
 **Production:** No PMF Engine application deployed
 
@@ -67,8 +67,17 @@
 - **Push working directory:** use `-d ./xano/market`, the directory containing `table/`, not `-d ./xano/market/table`. The latter omits Xano's expected relative `table/` folder.
 - Next stage: user verifies signup External Access disabled plus owner login, then may explicitly and temporarily enable direct CLI push in Xano UI. Claude performs **server dry-run only** and shows an exact preview of three creates, zero changes/deletes. Actual push requires a separate approval.
 
+## Server dry-run verification (Claude report, 2026-10-22)
+- Git was at `472da99` with clean working tree; source hashes match committed `f9c0315` table definitions.
+- Claude used `xano workspace push -p pmf -w 2 -b v1 -d ./xano/market --dry-run`. The server returned exit code 0 and previewed **exactly three creates**: `customers`, `products`, and `segments`; no existing-resource changes, deletes, records, APIs, or auth changes.
+- Claude independently pulled workspace after the dry-run and reported no schema changes. The workspace still contains only the Xano auth starter and existing endpoints.
+- Direct push setting `allow_push: true` was verified in workspace 2; **turn it back off immediately after the approved real push**.
+- User confirmed to Claude that `auth/signup` External Access is disabled and owner login/`auth/me` work. An independent external signup-block test was **not performed** because an unexpectedly open endpoint could create a user.
+- **Next gate:** real partial push, with an interactive confirmation; do not use `--force`, `--sync`, `--delete`, `--records`, `--env`, `--truncate`, or `--no-transaction`. Re-run dry-run immediately before it and stop if preview changes.
+- After push: disable `allow_push`; inspect `pmf` schema and its indexes/references, unchanged `user`/auth endpoints and signup External Access state; note any local GUID/writeback modifications and reconcile them deliberately in Git. Never assume Git metadata changed remotely until independently verified.
+
 ## One next action
-Confirm the signup External Access lockdown in the Xano UI and owner login. If verified, user may temporarily enable **Allow Direct Workspace Push** specifically in `pmf` workspace 2; Claude then runs only `xano workspace push -p pmf -w 2 -b v1 -d ./xano/market --dry-run` from the repository root and stops with the server preview. No real push yet, and do not enable push in the Goodz workspace.
+With the owner's authorization, perform an **interactive partial push** from the PMF repository root: `xano workspace push -p pmf -w 2 -b v1 -d ./xano/market`, only after matching the exact three-create dry-run. Stop if any other change appears or CLI raises new warnings. Then immediately disable direct push and complete read-back verification.
 
 ## Approved-stack status
 Xano selected; frontend still undecided between WeWeb and a coded frontend deployed on Vercel.
