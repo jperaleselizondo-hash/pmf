@@ -700,13 +700,22 @@ Existing and unchanged: `POST auth/login`, `GET auth/me`, `POST auth/signup` (Ex
 `pmf/auth/require_owner`; `pmf/access/{product, segment, customer, interview, wave, participation, insight, evidence, hypothesis, experiment}`; `pmf/integrity/{segment_in_product, customer_in_product}`; `pmf/text/{normalize, is_blank}`; `pmf/util/patch_data`; `pmf/lock/{wave, insight}`; `pmf/survey/{wave_state, assert_wave_open, assert_definition_unlocked, validate_response, participation_status}`; `pmf/report/{count_wave, compute_pmf, comparability, build_wave_report}`; `pmf/evidence/{validate_source, source_summary}`; `pmf/insight/{count_valid_evidence, assert_reviewed}`; `pmf/validation/{validate_experiment, validate_hypothesis_status}`; `pmf/guard/count_references`.
 Change vs R5: `pmf/db/unique_error` replaced by `pmf/util/patch_data` (duplicates are pre-checked; index violations surface as transaction errors). `pmf/report/count_wave` is pure (aggregates rows already loaded by `build_wave_report`).
 
-## R8.5 Test safety protocol (mandatory before any write test)
-The HTTP test runner aborts unless **all** hold:
-1. `PMF_TEST_BASE_URL` is set and its host differs from the live host (`xgjc-aodb-3a7q.n7e.xano.io`); the runner contains a hard-coded deny-list for the live host.
-2. `PMF_TEST_ENV_HOST` (the isolated tenant host recorded by the operator from `xano ephemeral get`) equals the host of `PMF_TEST_BASE_URL`, and the URL path starts with `/api:pmf-app`.
-3. `PMF_TEST_TENANT_NAME` is set and the operator has confirmed it (`--confirm-tenant <name>` must match).
-4. Read-only canary: `GET auth/me` with the test owner token returns an email ending in the synthetic domain `@pmf-test.invalid`; `GET products` returns only products whose names start with `SYNTH-`. Any other result aborts before the first write.
-5. Tokens are read from environment variables only; nothing is written to disk or Git.
+## R8.5 Test safety protocol (updated after source hardening at `5905671`)
+
+**Status:** source guard and offline tests implemented, but ephemeral-tenant identity/URL semantics and all HTTP requests remain unverified against Xano. The test runner must refuse unknown tenant configurations rather than relax safety checks.
+
+1. **Pure URL configuration:** HTTPS only; no embedded credentials, unexpected ports, queries or fragments; hard-deny the known live host; business path must be exactly `/api:pmf-app` or `/api:pmf-app:<branch>`. Authentication URL must use `/api:<auth-canonical>[:branch]` on the same host and branch. Tenant-specific path prefixes are not documented and are therefore refused until verified with Xano. `PMF_TEST_ENV_HOST` is **retired**; do not use operator-typed host strings as an identity guarantee.
+2. **Authoritative ephemeral identity:** the suite reads `xano ephemeral get <name> -p pmf -w 2 -o json` before requests. Metadata must contain the selected name, valid `ephemeral_expires_at` with at least 10 minutes left, a usable state, and `xano_domain`; the test host must match that tenant's domain and must not equal the live host. Field shapes/URL format require first-tenant verification.
+3. **Read-only canary:** `GET auth/me` must identify two distinct synthetic users with `@pmf-test.invalid` email values; the owned product list must be complete on one page (at most 100 records) and contain only `SYNTH-`-prefixed names.
+4. **Restricted HTTP client:** requests may use only the 48 approved business routes and `GET auth/me`, only on the verified host. Do not follow redirects.
+5. **Security sweep gate:** S01 (without a token) and S02 (as a non-owner) always run, even with `--only`. A failure aborts before creating the normal synthetic fixture. These sweeps use real HTTP methods and could write if authorization is broken; run them **only in the isolated tenant**, never in live.
+6. **Concurrency gate U13:** C01–C04 use fresh records per trial and a synchronized release (default 25, minimum 10 trials). Fail on any broken final-state invariant, request error or insufficient client-side overlap (less than 80%). Client overlap alone is not proof of server overlap. In the isolated tenant, a reviewed **negative-control variant without locks** must expose at least one C02–C04 race violation; restore the production-intended lock implementation before any further full-suite run. Never run the negative-control variant against live.
+7. **Evidence:** Offline results (49/49 unit tests and 18/18 static negative controls, reported at `5905671`) validate the test harness and implementation shape only. Xano runtime tests, inline unit tests, ownership, rollback, enum behavior and transaction/locking semantics remain pending.
+
+**Implementation source:** `feat/api-v1` at `5905671d70b2377f2d69add4c43d1474aa17c015`, particularly `tests/api/{safety.py,http_client.py,concurrency.py,pmf_api_tests.py}` and `tests/README.md`. Deployment is still unauthorized.
 
 ## R8.6 Approvals still required
-Unchanged from R7 items 2–7, minus the `auth/login` change (U10 now excludes it).
+- **Current status:** 48 endpoints and 34 functions prepared on `feat/api-v1`; no Xano endpoints/functions/tenants added; live workspace `pmf` has ten business tables and three existing auth APIs only. Direct push was unexpectedly reported **true** in the latest read; user must disable it and verify the CLI returns `allow_push: false` before further changes.
+- **Next gate:** read-only Xano Billing/plan confirmation of ephemeral-tenant entitlement and price. No charge-creating action or tenant creation is approved by this document.
+- **Later separate approvals:** one time-limited isolated-tenant creation; schema/auth/API push into that tenant only; fixture accounts/env; full runtime test suite and concurrency negative control; merging reviewed sources; setting live owner env var; live dry-run; separately approved interactive push; CLI-verified push disabled afterwards.
+- Existing `auth/login`, `auth/me`, `auth/signup` remain unchanged (U10).
