@@ -17,5 +17,8 @@ This records design choices, not deployed features.
 | D-011 | 2026-10-22 | User created a Xano workspace named `pmf`; inspect it first | Workspace existence reported by owner; actual workspace ID, branch and schema still require read-only verification |
 | D-012 | 2026-10-22 | Postpone frontend decision until backend specifications/APIs are established | The data architecture and API contracts should remain frontend-independent |
 
+| D-013 | 2026-10-22 | Owner account reported created and auth endpoints working | User reported completion; owner numeric ID and public signup lockdown still require verification |
+| D-014 | 2026-10-22 | Start Phase 2 with Market tables only: `products`, `segments`, `customers` | Smallest practical batch for the core domain; CLI push remains disabled pending a scoped review |
+
 ## Open technical decisions
 Not yet decided: Xano physical field types/constraints; actual Xano branch; frontend choice and, if Vercel, frontend framework; API naming; referential deletion semantics; finalized authentication policy; backup and release mechanism. Resolve after read-only environment inventory. Mark updates here with dated decisions and supporting test or rationale.
