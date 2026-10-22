@@ -1,7 +1,7 @@
 # Project Status
 
 **Date:** 2026-10-22
-**Milestone:** Phase 2 Batch 2 applied and verified — Research tables `interviews`, `survey_waves`, `survey_participations` live (6 of 10 business tables)
+**Milestone:** Phase 2 Batch 3 final schema merged to GitHub main; Xano server dry-run pending (6 of 10 business tables live)
 **Product build:** Xano workspace `pmf` (ID 2), branch `v1` (live): auth starter plus three empty Market and three empty Research tables; no business APIs, no records in business tables, no frontend
 **Production:** No PMF Engine application deployed
 
@@ -107,8 +107,16 @@
 - `allow_push`: after the push the CLI still reported **true** even though the UI had been reported disabled; the user re-toggled it and Claude verified **false** via CLI before this commit. Lesson: always confirm the push setting via CLI, not only the UI.
 - **User-confirmed in the Xano UI (not independently testable by Claude):** `auth/signup` External Access still off; `interviews`, `survey_waves`, `survey_participations` each have 0 records.
 
+## Final schema source merge (2026-10-22)
+- Claude inspected four revised XanoScript definitions at feature commit `2f16cf5`; reported 10/10 offline syntax and semantic checks passed across all business tables, and 9/9 revision-focused negative controls were detected. All references resolve, no duplicate table names, no blocking architecture decisions.
+- GitHub final feature review instructions were updated (commit `29cd556`) after Research Batch 2 closure at `c32af8b`.
+- GitHub PR #1 merged the feature branch into `main` in commit `d0812308259945ccd9733b3f3b5481a93c14d53a`. Scope is exactly five **new** files in `xano/intelligence_validation/`: four XanoScript table definitions and `REVIEW.md`.
+- **Source-only merge:** no Xano mutation, server-side dry-run or actual schema push performed. All 10 business-table definitions are now in Git; 6 of 10 business tables are live in Xano.
+- The next task is the server-side dry-run for exactly four CREATEs. Ensure `allow_push=false` at rest, verify owner login/signup lock, temporarily enable direct push in `pmf` workspace 2 only for the preview, then separately approve the real interactive push.
+- Once all ten tables are live and verified, the user prefers **one consolidated API implementation batch** covering owner authorization, Market/Research CRUD, surveys/PMF reporting, evidence/insights, hypotheses and experiments. Maintain internal validation checkpoints and separate explicit production-write approval.
+
 ## One next action
-Validate the final Intelligence + Validation batch on `feat/final-schema-batch` (offline syntax/semantic checks and negative controls) and resolve remaining review items before merging into `main`. Then follow the same gate: merge → user confirms signup lock → temporary direct push → dry-run (`-d ./xano/intelligence_validation`, exactly four CREATEs) → separately approved interactive push → disable push and verify via CLI → read-back.
+Confirm `auth/signup` External Access remains disabled and owner login works. If so, explicitly authorize temporary direct push in `pmf` workspace 2 for the server dry-run: `xano workspace push -p pmf -w 2 -b v1 -d ./xano/intelligence_validation --dry-run`. Require **exactly** four table CREATE operations (`insights`, `insight_evidence`, `hypotheses`, `experiments`), zero updates/deletes, and no auth or existing-table changes. A real push requires separate approval, interactive confirmation, and post-push `allow_push=false` verified via CLI.
 
 ## Approved-stack status
 Xano selected; frontend still undecided between WeWeb and a coded frontend deployed on Vercel.
