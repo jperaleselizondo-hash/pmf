@@ -37,8 +37,16 @@
 - Xano officially distinguishes API branches (business-logic versions) from Data Source Environments (record separation). No isolated data source was verified for pmf.
 - No Xano resources, Git files or frontend resources were modified during Claude's verification.
 
+## Batch 0 preflight follow-up (2026-10-22)
+- Claude confirmed group `Authentication`, with externally reachable `auth/login` and `auth/signup`, and authenticated `auth/me`. Unauthenticated `auth/me` returned 401. Owner user count/identity remain unverified.
+- Claude incorrectly suggested that the endpoint must be deleted. **Official Xano Security / Pre-Launch docs document per-endpoint Settings → External Access.** Preferred remediation: verify owner login, then disable External Access on `auth/signup` and confirm public requests are blocked while login/me continue to function. Deletion is **not** approved.
+- Owner identity should be confirmed manually in Xano `pmf` → Database → `user`, without exporting hashes or tokens. If there are no records, establish one authorized owner and verify login *before* blocking signup.
+- Claude's local Git report said `c94cd4f`; GitHub's actual `main` was verified at `b2205c8` before this documentation update. Resolve remote and branch divergence before Claude commits.
+- A future designated-owner check must protect every business endpoint; `products.owner_user_id` alone does not prevent another authenticated identity from creating products.
+- **No application changes have been authorized or performed.** Record-only status update.
+
 ## One next action
-**Auth preflight, read-only:** determine whether the intended owner account already exists, without exporting user records or hashes; confirm safe reversible controls for disabling external access to `auth/signup`, retaining login and `auth/me`. Then request explicit approval for auth lockdown (Batch 0). Do **not** enable CLI push or create business tables yet.
+Confirm user-row count and owner identity in Xano's UI, then verify owner login. After that, separately authorize disabling **External Access** on the `auth/signup` endpoint. Do not delete it. Fix Claude's local Git sync before committing documentation. Do not enable CLI push or create business tables yet.
 
 ## Approved-stack status
 Xano selected; frontend still undecided between WeWeb and a coded frontend deployed on Vercel.
