@@ -72,4 +72,5 @@ query "evidence/{evidence_id}" verb=PATCH {
   }
 
   response = $updated
+  guid = "dv3deqpObBJhHguQAnK8SAG0SPU"
 }

@@ -56,4 +56,5 @@ query "products/{product_id}" verb=GET {
   }
 
   response = $product|set:"counts":{segments: $segment_count, customers: $customer_count, interviews: $interview_count, survey_waves: $wave_count, insights: $insight_count, hypotheses: $hypothesis_count}
+  guid = "OV7RJ_sYIQvha8_Bt4Bv3UbulzY"
 }

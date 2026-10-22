@@ -21,4 +21,5 @@ query "products" verb=GET {
   }
 
   response = $products
+  guid = "kED2FiQ63Q7ac8X7KysAllWFOFo"
 }

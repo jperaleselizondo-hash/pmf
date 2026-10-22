@@ -65,4 +65,5 @@ query "insights/{insight_id}/review-status" verb=POST {
   }
 
   response = $updated
+  guid = "ZE9WHs0MWS1hSdtCln9yao9CWrU"
 }

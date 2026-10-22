@@ -18,4 +18,5 @@ function "pmf/survey/assert_definition_unlocked" {
   }
 
   response = true
+  guid = "_Mgy_37V0DuvyxHhty1cmg3cHSc"
 }

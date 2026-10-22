@@ -23,4 +23,5 @@ function "pmf/access/customer" {
   }
 
   response = {record: $customer, product_id: $product.id}
+  guid = "0WZIozYwE1Fk6yzRr_mYtNCw9Vk"
 }

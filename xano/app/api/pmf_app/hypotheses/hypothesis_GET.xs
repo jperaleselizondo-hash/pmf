@@ -36,4 +36,5 @@ query "hypotheses/{hypothesis_id}" verb=GET {
   }
 
   response = $out
+  guid = "Ezfiz_3Q7T_s3wbEh35jawXTFTI"
 }

@@ -74,4 +74,5 @@ query "interviews/{interview_id}" verb=PATCH {
   }
 
   response = $updated
+  guid = "Rh0T_BTuEe31BGWKrrK0nfPQ6xk"
 }

@@ -82,4 +82,5 @@ query "products/{product_id}/insights" verb=GET {
   }
 
   response = $page|set:"items":$items
+  guid = "-6lshk8Ekz_2DlfYAIk9xKAA0yM"
 }

@@ -40,4 +40,5 @@ query "insights/{insight_id}" verb=DELETE {
   }
 
   response = {deleted: true, id: $input.insight_id}
+  guid = "LVS21RF-fq7XkzrRmA5-sdIwR1M"
 }

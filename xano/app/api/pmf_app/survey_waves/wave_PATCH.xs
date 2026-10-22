@@ -78,4 +78,5 @@ query "survey-waves/{wave_id}" verb=PATCH {
   }
 
   response = $updated
+  guid = "a8mT9idq_BxDqE4I4mTD_xBtPw0"
 }

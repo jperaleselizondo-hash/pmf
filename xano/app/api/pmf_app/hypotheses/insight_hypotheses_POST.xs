@@ -55,4 +55,5 @@ query "insights/{insight_id}/hypotheses" verb=POST {
   }
 
   response = $hypothesis
+  guid = "AWGrIct5WD3YuZBbNpjJubtaHcQ"
 }

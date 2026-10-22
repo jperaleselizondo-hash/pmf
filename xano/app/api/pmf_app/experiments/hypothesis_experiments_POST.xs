@@ -79,4 +79,5 @@ query "hypotheses/{hypothesis_id}/experiments" verb=POST {
   }
 
   response = $experiment
+  guid = "YfrmflQ5YpAAOrjgi-Mrfquy3BE"
 }

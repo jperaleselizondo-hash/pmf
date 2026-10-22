@@ -36,4 +36,5 @@ query "products/{product_id}" verb=PATCH {
   }
 
   response = $updated
+  guid = "Em2JYgEBdAy3X4OBEeVUBVg3f4M"
 }

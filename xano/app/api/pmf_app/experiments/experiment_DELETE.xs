@@ -60,4 +60,5 @@ query "experiments/{experiment_id}" verb=DELETE {
   }
 
   response = {deleted: true, id: $input.experiment_id}
+  guid = "kFIZQ1KOF4Ip6FtXT_z6fm4ik7U"
 }

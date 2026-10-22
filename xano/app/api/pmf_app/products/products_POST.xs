@@ -37,4 +37,5 @@ query "products" verb=POST {
   }
 
   response = $product
+  guid = "b2ofdZf6v_dkIXoLStKLGQdRdlQ"
 }

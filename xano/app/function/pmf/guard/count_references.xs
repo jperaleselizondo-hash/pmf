@@ -123,4 +123,5 @@ function "pmf/guard/count_references" {
   }
 
   response = {total: $total, references: $refs}
+  guid = "0_GqrD3OWYxpCJQ_BvXRSb6TUI0"
 }

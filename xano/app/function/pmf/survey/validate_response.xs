@@ -86,4 +86,5 @@ function "pmf/survey/validate_response" {
     input = {wave: {started_at: 1000}, state: {invited_at: 1500, responded_at: 2000, disappointment_level: "very", main_benefit: "speed"}}
     expect.to_be_true ($response)
   }
+  guid = "Pa3AIbNrZ8QT8odb2VJUxgypZw0"
 }

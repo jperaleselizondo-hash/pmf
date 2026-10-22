@@ -43,4 +43,5 @@ query "products/{product_id}/segments" verb=GET {
   }
 
   response = $page|set:"items":$items
+  guid = "QMf3qGkyOrbfE0E2qwpVcq8oS7g"
 }

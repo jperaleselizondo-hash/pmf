@@ -151,4 +151,5 @@ function "pmf/evidence/validate_source" {
   }
 
   response = {kind: $kind, product_id: $source_product_id}
+  guid = "CAgTm0hx399X_JXSnGjlEgaaG1s"
 }

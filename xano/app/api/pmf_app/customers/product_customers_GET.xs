@@ -52,4 +52,5 @@ query "products/{product_id}/customers" verb=GET {
   }
 
   response = $customers
+  guid = "7Cmy6LSqgB7nDqIfo4_HNbzMo2s"
 }

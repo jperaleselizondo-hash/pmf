@@ -63,4 +63,5 @@ function "pmf/text/normalize" {
     input = {value: null}
     expect.to_be_null ($response)
   }
+  guid = "AXCKEhHgUDHEXN4hVgTGkyhAe6I"
 }

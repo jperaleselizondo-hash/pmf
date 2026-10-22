@@ -23,4 +23,5 @@ function "pmf/access/wave" {
   }
 
   response = {record: $wave, product_id: $product.id}
+  guid = "0B4mSx7IeyWL2MUJy6pjOseozvU"
 }

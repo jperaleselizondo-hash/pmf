@@ -23,4 +23,5 @@ function "pmf/access/segment" {
   }
 
   response = {record: $segment, product_id: $product.id}
+  guid = "zHWRrC5apkx2U4i9Lh9WsO6e1OM"
 }

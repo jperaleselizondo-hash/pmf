@@ -57,4 +57,5 @@ query "customers/{customer_id}/interviews" verb=POST {
   }
 
   response = $interview
+  guid = "-6TWogIMIfuf1ANmReQO278mBqk"
 }

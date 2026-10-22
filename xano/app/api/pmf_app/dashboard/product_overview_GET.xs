@@ -110,4 +110,5 @@ query "products/{product_id}/overview" verb=GET {
     hypotheses        : $hypothesis_counts
     recent_experiments: $recent_experiments.items
   }
+  guid = "4B3cOTCX1CaXH4vsJlchi8m7LSs"
 }

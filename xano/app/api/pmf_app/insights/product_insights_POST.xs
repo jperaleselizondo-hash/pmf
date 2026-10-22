@@ -54,4 +54,5 @@ query "products/{product_id}/insights" verb=POST {
   }
 
   response = $insight
+  guid = "EUAlAcvwQt_P27sIBuNsBoqJDQM"
 }

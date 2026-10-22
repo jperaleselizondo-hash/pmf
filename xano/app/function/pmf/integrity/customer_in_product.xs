@@ -19,4 +19,5 @@ function "pmf/integrity/customer_in_product" {
   }
 
   response = $customer
+  guid = "vApr4mmSzKfgrgF0oo-Mpx3lbu8"
 }

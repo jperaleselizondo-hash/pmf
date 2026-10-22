@@ -114,4 +114,5 @@ query "insights/{insight_id}/evidence" verb=POST {
   }
 
   response = {evidence: $evidence, warnings: $warnings}
+  guid = "UoMi08xD9XM-9ugDo6cFu1KFZxE"
 }

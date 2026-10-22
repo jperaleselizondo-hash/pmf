@@ -23,4 +23,5 @@ function "pmf/access/evidence" {
   }
 
   response = {record: $evidence, insight: $insight.record, product_id: $insight.product_id}
+  guid = "i8qfV6XjIEYQSJqb0pAP7ObTdjg"
 }

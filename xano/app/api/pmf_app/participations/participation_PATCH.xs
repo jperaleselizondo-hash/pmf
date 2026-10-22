@@ -114,4 +114,5 @@ query "participations/{participation_id}" verb=PATCH {
   }
 
   response = $updated|set:"status":$status
+  guid = "b3Y6ub_6Tj24dXZ5BYWFXYWpsO0"
 }

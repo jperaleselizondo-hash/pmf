@@ -480,6 +480,14 @@ def p02(s):
     expect(s.report(wid, unsegmented="true")["selected"]["pmf_percent"] == 0, "unsegmented must be 0.0, not null")
     by = {(b["segment"] or {}).get("id"): b["result"]["pmf_percent"] for b in s.report(wid)["by_segment"]}
     expect(close(by[s.fx["A1"]["id"]], 50.0) and by[s.fx["A2"]["id"]] is None and by[None] == 0, f"by_segment {by}")
+    # Runtime gate: the deployed definition dropped the `unsegmented?=false` default (read-back RUNTIME item).
+    default = s.report(wid)
+    expect(default["filter"]["unsegmented"] is False, f"omitted unsegmented must be false, got {default['filter']['unsegmented']!r}")
+    explicit_false = s.report(wid, unsegmented="false")
+    expect(explicit_false["filter"]["unsegmented"] is False and explicit_false["selected"] == default["selected"], "unsegmented=false must equal the unfiltered report")
+    explicit_true = s.report(wid, unsegmented="true")
+    sel = explicit_true["selected"]
+    expect(explicit_true["filter"]["unsegmented"] is True and sel["eligible_count"] == 1 and sel["valid_response_count"] == 1, f"unsegmented=true selects only C5: {sel}")
 
 
 @case("P03", "zero valid responses -> pmf null and NO_VALID_RESPONSES")
@@ -487,6 +495,7 @@ def p03(s):
     rep = s.report(s.fx["W3"]["id"])
     expect(rep["selected"]["pmf_percent"] is None and rep["selected"]["valid_response_count"] == 0, "pmf not null")
     expect(any(w["code"] == "NO_VALID_RESPONSES" for w in rep["warnings"]), "warning missing")
+    expect(rep["filter"]["unsegmented"] is False, f"omitted unsegmented must be false, got {rep['filter']['unsegmented']!r}")
 
 
 @case("P04", "invited response rate excludes manual responses")
@@ -656,25 +665,45 @@ def i05(s):
 
 @case("V02", "experiment dates must be ordered")
 def v02(s):
-    rejected(s.owner.call("POST", f"hypotheses/{s.fx['HYP']['id']}/experiments", {"name": "e", "method": "m", "started_at": s.now - DAY, "ended_at": s.now - 2 * DAY}), 400, "EXPERIMENT_DATES")
+    # Runtime gate: experiment create builds its validation state in Xano expression mode (read-back RUNTIME item).
+    hid = s.fx["HYP"]["id"]
+    rejected(s.owner.call("POST", f"hypotheses/{hid}/experiments", {"name": "e", "method": "m", "started_at": s.now - DAY, "ended_at": s.now - 2 * DAY}), 400, "EXPERIMENT_DATES")
+    rejected(s.owner.call("POST", f"hypotheses/{hid}/experiments", {"name": "e", "method": "m", "ended_at": s.now - DAY}), 400, "EXPERIMENT_DATES")
+    expect(ok(s.owner.call("GET", f"hypotheses/{hid}"))["experiments"] == [], "a rejected experiment was persisted")
 
 
-@case("V03", "a decision requires a conclusion")
+@case("V03", "a decision requires a conclusion; a conclusion requires an observed result")
 def v03(s):
-    rejected(s.owner.call("POST", f"hypotheses/{s.fx['HYP']['id']}/experiments", {"name": "e", "method": "m", "decision": "adopt"}), 400, "EXPERIMENT_DECISION")
+    hid = s.fx["HYP"]["id"]
+    rejected(s.owner.call("POST", f"hypotheses/{hid}/experiments", {"name": "e", "method": "m", "decision": "adopt"}), 400, "EXPERIMENT_DECISION")
+    rejected(s.owner.call("POST", f"hypotheses/{hid}/experiments", {"name": "e", "method": "m", "conclusion": "supported"}), 400, "EXPERIMENT_CONCLUSION")
+    rejected(s.owner.call("POST", f"hypotheses/{hid}/experiments", {"name": "e", "method": "m", "conclusion": "supported", "observed_result": "   "}), 400, "EXPERIMENT_CONCLUSION")
+    expect(ok(s.owner.call("GET", f"hypotheses/{hid}"))["experiments"] == [], "a rejected experiment was persisted")
 
 
 @case("V04", "status transitions follow recorded experiments")
 def v04(s):
     hid = s.fx["HYP"]["id"]
     rejected(s.owner.call("PATCH", f"hypotheses/{hid}", {"status": "testing"}), 400, "INVALID_STATUS_TRANSITION")
-    exp = ok(s.owner.call("POST", f"hypotheses/{hid}/experiments", {"name": "Bank import prototype", "method": "prototype", "started_at": s.now - 3 * DAY, "baseline": "120 min", "target": "< 60 min"}))
+    body = {"name": "Bank import prototype", "method": "prototype", "started_at": s.now - 3 * DAY, "baseline": "120 min", "target": "< 60 min"}
+    exp = ok(s.owner.call("POST", f"hypotheses/{hid}/experiments", body))
+    stored = next(e for e in ok(s.owner.call("GET", f"hypotheses/{hid}"))["experiments"] if e["id"] == exp["id"])
+    for field, value in body.items():
+        expect(stored[field] == value, f"experiment {field} not persisted: {stored[field]!r} != {value!r}")
+    expect(stored["ended_at"] is None and stored["conclusion"] is None and stored["decision"] is None and stored["hypothesis_id"] == hid, f"unexpected defaults {stored}")
     ok(s.owner.call("PATCH", f"hypotheses/{hid}", {"status": "testing"}))
     rejected(s.owner.call("PATCH", f"hypotheses/{hid}", {"status": "validated"}), 400, "INVALID_STATUS_TRANSITION")
     ok(s.owner.call("PATCH", f"experiments/{exp['id']}", {"ended_at": s.now - DAY, "observed_result": "45 min median (synthetic)", "conclusion": "supported", "decision": "adopt"}))
     ok(s.owner.call("PATCH", f"hypotheses/{hid}", {"status": "validated"}))
     rejected(s.owner.call("PATCH", f"experiments/{exp['id']}", {"conclusion": "refuted"}), 400, "HYPOTHESIS_STATUS_DEPENDS")
     s.fx["EXP"] = exp
+    full = {"name": "Follow-up interview round", "method": "interview", "started_at": s.now - 2 * DAY, "ended_at": s.now - DAY,
+            "baseline": "n/a", "target": "3 of 5 confirm", "observed_result": "2 of 5 confirmed (synthetic)",
+            "conclusion": "inconclusive", "decision": "investigate", "notes": "Synthetic follow-up"}
+    created = ok(s.owner.call("POST", f"hypotheses/{hid}/experiments", full))
+    stored = next(e for e in ok(s.owner.call("GET", f"hypotheses/{hid}"))["experiments"] if e["id"] == created["id"])
+    for field, value in full.items():
+        expect(stored[field] == value, f"experiment {field} not persisted: {stored[field]!r} != {value!r}")
 
 
 @case("V05", "experiments and referenced hypotheses are preserved")
@@ -824,6 +853,16 @@ def x02(s):
     ev = ok(s.owner.call("PATCH", f"evidence/{fx['EV_SUP']['id']}", {"relationship": "supports", "excerpt": "Reconciling invoices takes two hours every Friday."}))
     expect(ev["source_field"] == "notes", "evidence source_field changed")
     rejected(s.owner.call("PATCH", f"evidence/{fx['EV_SUP']['id']}", {"source_field": "main_benefit"}), 400, "INVALID_SOURCE_FIELD")
+    # Runtime gates: participation list pagination (slice grouping) and the dropped `unsegmented?=false` default.
+    w1 = fx["W1"]["id"]
+    pages = [ok(s.owner.call("GET", f"survey-waves/{w1}/participations", params={"per_page": 2, "page": n})) for n in (1, 2, 3, 4)]
+    expect([len(p["items"]) for p in pages] == [2, 2, 1, 0] and all(p["itemsTotal"] == 5 for p in pages), f"pagination {[len(p['items']) for p in pages]}")
+    ids = [i["id"] for p in pages for i in p["items"]]
+    expect(len(ids) == len(set(ids)) == 5, "pages overlap or miss rows")
+    expect(len(ok(s.owner.call("GET", f"survey-waves/{w1}/participations", params={"per_page": 100}))["items"]) == 5, "omitted unsegmented must not filter")
+    expect(len(ok(s.owner.call("GET", f"survey-waves/{w1}/participations", params={"per_page": 100, "unsegmented": "false"}))["items"]) == 5, "unsegmented=false must not filter")
+    only = ok(s.owner.call("GET", f"survey-waves/{w1}/participations", params={"per_page": 100, "unsegmented": "true"}))["items"]
+    expect(len(only) == 1 and only[0]["segment_id_snapshot"] is None, f"unsegmented=true {only}")
     hyps = ok(s.owner.call("GET", f"products/{a}/hypotheses", params={"status": "validated"}))["items"]
     expect(any(h["id"] == fx["HYP"]["id"] and h["experiment_count"] >= 1 for h in hyps), "hypothesis filter")
 

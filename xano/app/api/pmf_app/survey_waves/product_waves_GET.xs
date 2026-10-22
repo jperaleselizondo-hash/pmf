@@ -55,4 +55,5 @@ query "products/{product_id}/survey-waves" verb=GET {
   }
 
   response = $page|set:"items":$items
+  guid = "-_mAXufnbCy_ulkaTVqOVubyCVo"
 }

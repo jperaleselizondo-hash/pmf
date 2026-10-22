@@ -56,4 +56,5 @@ function "pmf/evidence/source_summary" {
   }
 
   response = $summary
+  guid = "0rigHlPz9fsiH6BvatWhTIAMAMc"
 }

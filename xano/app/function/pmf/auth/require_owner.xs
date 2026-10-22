@@ -26,4 +26,5 @@ function "pmf/auth/require_owner" {
   }
 
   response = $owner_id
+  guid = "R1GD_pgZWUgY4mr6bq7743W7AL4"
 }

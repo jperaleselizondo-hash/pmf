@@ -23,4 +23,5 @@ function "pmf/access/participation" {
   }
 
   response = {record: $participation, wave: $wave.record, product_id: $wave.product_id}
+  guid = "eEqO0vTf2blOHMpoeDhiRAcR_t4"
 }

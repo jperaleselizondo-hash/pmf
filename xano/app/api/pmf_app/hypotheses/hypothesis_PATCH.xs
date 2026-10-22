@@ -68,4 +68,5 @@ query "hypotheses/{hypothesis_id}" verb=PATCH {
   }
 
   response = $updated
+  guid = "33FcJq9sfryEOJ28K8j2kmsrNNo"
 }

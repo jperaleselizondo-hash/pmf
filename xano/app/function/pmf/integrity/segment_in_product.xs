@@ -31,4 +31,5 @@ function "pmf/integrity/segment_in_product" {
   }
 
   response = $segment
+  guid = "KEk9_JBWrGst-x4tphMZoOM9etU"
 }

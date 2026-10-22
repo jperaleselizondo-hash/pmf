@@ -234,4 +234,5 @@ function "pmf/report/build_wave_report" {
     warnings                : $warnings
     generated_at            : now
   }
+  guid = "m7Pc4DmHmBtmranPex7XmxGS7b4"
 }

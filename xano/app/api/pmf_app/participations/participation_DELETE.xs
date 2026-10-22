@@ -54,4 +54,5 @@ query "participations/{participation_id}" verb=DELETE {
   }
 
   response = {deleted: true, id: $input.participation_id}
+  guid = "FYnMjUa7h3temxaRAZC-bm98m0Q"
 }

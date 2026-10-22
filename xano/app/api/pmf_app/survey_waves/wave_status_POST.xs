@@ -89,4 +89,5 @@ query "survey-waves/{wave_id}/status" verb=POST {
   }
 
   response = $updated|set:"state":$state
+  guid = "dI5rPk_WfHfZ4kcx1FYSaM7Mkxo"
 }

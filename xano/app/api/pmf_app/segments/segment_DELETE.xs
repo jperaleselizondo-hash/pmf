@@ -36,4 +36,5 @@ query "segments/{segment_id}" verb=DELETE {
   }
 
   response = {deleted: true, id: $input.segment_id}
+  guid = "xMqL_4ils01uZxDzeSJQ-iavRAY"
 }

@@ -33,4 +33,5 @@ query "survey-waves/{wave_id}/report" verb=GET {
   }
 
   response = $report
+  guid = "ddCi1ngbq5_N8mpqU0Y0b-1n8Fk"
 }

@@ -18,4 +18,5 @@ function "pmf/insight/count_valid_evidence" {
   }
 
   response = $valid|count
+  guid = "Sn6LR1V4gCTF3ycxmgVV6EFnZSg"
 }

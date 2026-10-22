@@ -36,4 +36,5 @@ query "customers/{customer_id}" verb=DELETE {
   }
 
   response = {deleted: true, id: $input.customer_id}
+  guid = "mWbUbPG0S_HUayqN1NdPK1KedGs"
 }

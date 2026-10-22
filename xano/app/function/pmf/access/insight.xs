@@ -23,4 +23,5 @@ function "pmf/access/insight" {
   }
 
   response = {record: $insight, product_id: $product.id}
+  guid = "o3GWF9YZ5-LoqxP4jutUu4-_U7M"
 }

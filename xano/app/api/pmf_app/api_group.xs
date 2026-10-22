@@ -4,4 +4,5 @@ api_group "PMF App" {
   description = "PMF Engine V1 business API (designated owner only)"
   history = 0
   tags = ["pmf", "v1"]
+  guid = "aXv82DFXHD1yvmutRbPv3sQ2PGg"
 }

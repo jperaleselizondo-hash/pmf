@@ -85,4 +85,5 @@ query "insights/{insight_id}" verb=PATCH {
   }
 
   response = $updated
+  guid = "06SKSTcNqHOMfTNY0zmBdS35uCQ"
 }

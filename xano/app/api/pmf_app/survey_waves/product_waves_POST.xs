@@ -41,4 +41,5 @@ query "products/{product_id}/survey-waves" verb=POST {
   }
 
   response = $wave
+  guid = "yPUcq-6rMqDaWh6rIwds8kvhHuA"
 }

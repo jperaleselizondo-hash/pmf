@@ -35,4 +35,5 @@ function "pmf/text/is_blank" {
     input = {value: " a "}
     expect.to_be_false ($response)
   }
+  guid = "MGo1gCCEYoDG7vGZ-4t-tyj-8Q0"
 }

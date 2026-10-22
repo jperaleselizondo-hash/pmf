@@ -48,4 +48,5 @@ query "segments/{segment_id}" verb=PATCH {
   }
 
   response = $updated
+  guid = "k-YKTSDaYIApKIHaFxd9DJewEqw"
 }

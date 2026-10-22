@@ -19,4 +19,5 @@ function "pmf/access/product" {
   }
 
   response = $product
+  guid = "cpsRamwILA8oafFCSWxqlx8ZSDc"
 }

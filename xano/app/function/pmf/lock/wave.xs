@@ -28,4 +28,5 @@ function "pmf/lock/wave" {
   }
 
   response = $locked
+  guid = "arQgFLYwEHU20r_ASVEly4auF-w"
 }

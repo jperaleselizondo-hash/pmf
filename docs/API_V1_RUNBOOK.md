@@ -42,9 +42,10 @@ Then the owner disables direct push and it is verified:
 ```
 xano workspace get -p pmf -w 2 -o json                   # allow_push MUST be false (D-025)
 xano workspace pull -p pmf -w 2 -b v1 -d /tmp/pmf-after
-python3 -I tests/static/compare_readback.py /tmp/pmf-after --baseline /tmp/pmf-before
+python3 -I tests/static/compare_readback.py /tmp/pmf-after --baseline /tmp/pmf-before --json /tmp/pmf-readback.json
 ```
-Keep the CLI-written `guid` lines in `xano/app` and commit them.
+The comparator classifies every deployed object as EQUIVALENT (documented re-formatting only), RUNTIME (plausible server normalization that must be proven by a named runtime test) or UNEXPLAINED. Exit 0 means structural verification passed (no missing/extra/unexplained objects, GUIDs match, 16 pre-existing documents unchanged); RUNTIME gates are printed and must pass in §4 before acceptance. Exit 1 → stop.
+Keep the CLI-written `guid` lines in `xano/app` and commit them (GUID lines only). Never copy Xano's re-printed definitions into the repository.
 
 ## 4. Runtime tests (synthetic data, live workspace)
 ```
@@ -58,7 +59,8 @@ python3 tests/api/pmf_api_tests.py --target live-pmf \
   --confirm-live synthetic-tests:xgjc-aodb-3a7q:workspace-2:pmf-app --trials 25
 ```
 Sequence enforced by the runner: fixed-target config → CLI identity (instance, workspace 2 = pmf) → read-only pull confirms canonicals `pmf-app` and `xHMmrw_d` → all ten business tables empty → canary (owner id matches `PMF_TEST_OWNER_ID`, intruder synthetic, no products) → **S01/S02 gate** → tables still empty → fixture → matrix → C01–C04 repeated trials (25 each) → X01/X02 → S06. A ledger of created ids is written to `~/.pmf-test-runs/`.
-Also run once: `xano unit_test run_all -p pmf -w 2 -b v1` (pure-function unit tests; they do not write data).
+Also run once: `xano unit_test run_all -p pmf -w 2 -b v1` (pure-function unit tests; they do not write data). This is the runtime gate for the `count_wave` test inputs that Xano stored as expression blocks.
+Deployment runtime gates (Phase 3 read-back, D-036) are asserted by P02/P03/P09/X02 (`unsegmented` defaults and filters, participation pagination), V02–V04 (experiment validation on create; no rejected experiment persisted; fields persist) and E05/E06/E08 (survey `source_field` validation).
 Manual checks: S03 (temporarily unset `PMF_OWNER_USER_ID` → 500 on any business endpoint, then restore), S08 (request history masking), S09 (signup External Access).
 
 ### Concurrency residual risk

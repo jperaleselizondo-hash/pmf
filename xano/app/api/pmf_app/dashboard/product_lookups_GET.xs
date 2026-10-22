@@ -107,4 +107,5 @@ query "products/{product_id}/lookups" verb=GET {
   }
 
   response = $result
+  guid = "PwwYJXKpd01XDC5M2uFpLzxoM_c"
 }

@@ -69,4 +69,5 @@ query "products/{product_id}/hypotheses" verb=GET {
   }
 
   response = $page|set:"items":$items
+  guid = "5_6HM2vrbupOxINuq8HOsulEEYg"
 }

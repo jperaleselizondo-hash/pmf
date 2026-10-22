@@ -108,4 +108,5 @@ function "pmf/util/patch_data" {
     input = {values: {}, clear: ["product_id"], clearable: ["segment_id"], touch: false}
     expect.to_throw
   }
+  guid = "k1FXXopGh-EpDUHrcGkIf6WA-4o"
 }

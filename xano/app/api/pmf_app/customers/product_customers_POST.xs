@@ -73,4 +73,5 @@ query "products/{product_id}/customers" verb=POST {
   }
 
   response = $customer
+  guid = "hE1Gvb4Uv1ZszK_8jT3jHcTQ6Yc"
 }

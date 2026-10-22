@@ -87,4 +87,5 @@ query "customers/{customer_id}" verb=GET {
   }
 
   response = $out
+  guid = "NZ8yxDmnDqYTFm3zo04AtYd7CrU"
 }

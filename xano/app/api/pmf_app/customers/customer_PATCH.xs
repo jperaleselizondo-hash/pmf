@@ -70,4 +70,5 @@ query "customers/{customer_id}" verb=PATCH {
   }
 
   response = $updated
+  guid = "qy2WEvUD0LkvxKR9SRRpMwkDWEw"
 }

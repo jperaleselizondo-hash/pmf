@@ -61,4 +61,5 @@ function "pmf/validation/validate_experiment" {
     input = {experiment: {started_at: 1000, ended_at: 2000, observed_result: "12 of 20 activated", conclusion: "supported", decision: "adopt"}}
     expect.to_be_true ($response)
   }
+  guid = "KA3XdhzcfGF3B_0OrUCbgh-jSw8"
 }

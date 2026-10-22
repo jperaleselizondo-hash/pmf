@@ -23,4 +23,5 @@ function "pmf/survey/assert_wave_open" {
     input = {wave: {closed_at: 1000}}
     expect.to_throw
   }
+  guid = "GPLb7Ktw2xZ2v5RSorEgqGI0Okk"
 }

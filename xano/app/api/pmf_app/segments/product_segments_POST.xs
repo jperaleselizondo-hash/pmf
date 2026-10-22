@@ -48,4 +48,5 @@ query "products/{product_id}/segments" verb=POST {
   }
 
   response = $segment
+  guid = "Gs0LOTeU9Sa1c04ARzuYNlfzdvI"
 }

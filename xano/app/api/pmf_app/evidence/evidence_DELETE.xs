@@ -44,4 +44,5 @@ query "evidence/{evidence_id}" verb=DELETE {
   }
 
   response = {deleted: true, id: $input.evidence_id}
+  guid = "KieiNyrcMehJJ7IV_Qxu7J2m_88"
 }

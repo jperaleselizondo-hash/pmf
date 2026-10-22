@@ -42,4 +42,5 @@ query "interviews/{interview_id}" verb=DELETE {
   }
 
   response = {deleted: true, id: $input.interview_id}
+  guid = "-jMF92EcsJY_IM3zlbXBglSZghg"
 }

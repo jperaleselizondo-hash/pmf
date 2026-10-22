@@ -23,4 +23,5 @@ function "pmf/access/hypothesis" {
   }
 
   response = {record: $hypothesis, insight: $insight.record, product_id: $insight.product_id}
+  guid = "1A21fJJZ6TCW0VijX2DwJHBNY3Y"
 }

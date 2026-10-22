@@ -80,4 +80,5 @@ query "survey-waves/{wave_id}/participations" verb=POST {
   }
 
   response = {created: $created}
+  guid = "3ZGTcM2nY9HC0c2CcxKMqnKo8rs"
 }

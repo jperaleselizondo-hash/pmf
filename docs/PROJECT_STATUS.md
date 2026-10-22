@@ -1,8 +1,8 @@
 # Project Status
 
 **Date:** 2026-10-23
-**Milestone:** Phase 2 database complete; consolidated Phase 3 API source merged to GitHub `main` (Xano API deployment not yet started)
-**Product build:** Xano workspace `pmf` (ID 2), branch `v1` (live): auth starter plus ten empty business tables; no business APIs, no records in business tables, no frontend
+**Milestone:** Phase 3 API V1 **deployed and structurally verified** in Xano; **runtime validation pending** (no HTTP/unit tests executed yet)
+**Product build:** Xano workspace `pmf` (ID 2), branch `v1` (live): auth starter, ten empty business tables, `PMF App` API group (`pmf-app`) with 48 endpoints and 34 functions; endpoints refuse all calls until `PMF_OWNER_USER_ID` is set (fail-closed); no records in business tables (owner-confirmed before push), no frontend
 **Production:** No PMF Engine application deployed
 
 ## Completed / documented
@@ -16,7 +16,7 @@
 ## Not started
 - [x] Phase 1: Read-only Xano CLI workspace inventory (Claude report received; no changes made); defer frontend inspection
 - [x] Phase 2: Physical Xano schema — Batch 1 (Market), Batch 2 (Research) and Batch 3 (Intelligence + Validation: `insights`, `insight_evidence`, `hypotheses`, `experiments`) applied and verified; schema only, no records or APIs
-- [ ] Phase 3: Auth and market/customer/interview APIs
+- [ ] Phase 3: Consolidated API V1 (all business domains) — deployed and structurally verified 2026-10-23; runtime validation pending
 - [ ] Phase 4: Survey/report API and sample-cohort tests
 - [ ] Phase 5: Insight/evidence/hypothesis/experiment APIs
 - [ ] Phase 6: Choose frontend (WeWeb or coded app hosted on Vercel), then build screens and end-to-end workflow
@@ -131,8 +131,25 @@
 - Current Xano state last reported by Claude: 16 schema definitions, 10 empty business tables, only existing Authentication APIs, **no deployed PMF business APIs**, and `allow_push: false`. None of the GitHub merges touched Xano.
 - Important unproven runtime dependencies: exact CLI dry-run output and API canonical uniqueness; Metadata API pagination/content permissions; HTTP semantics and transaction rollback; survey calculations; no-op parent-lock effectiveness. All runtime testing and any production changes still require their own approval.
 
+## Phase 3 API V1 deployed — structural verification (2026-10-23)
+- Server dry-run (Claude, Git `11a4696`, CLI exit 0) listed exactly 83 CREATEs; `tests/static/check_dry_run.py` PASS (exact inventory: `PMF App`, 34 functions, 48 verb+route endpoints, cross-checked against Proposal R8.3). Workspace unchanged by the dry-run.
+- Owner ran the approved interactive push (push output not supplied to Claude). Direct push was still on afterwards; owner disabled it and Claude verified `allow_push: false` via CLI.
+- Read-back `/tmp/pmf-after`: 99 documents = 16 pre-existing (byte-identical to the pre-deployment baseline) + 83 new; `PMF App` canonical `pmf-app`; Authentication canonical unchanged (`xHMmrw_d`); 48 PMF endpoints, 34 functions; all 83 server GUIDs match the CLI writeback, which is committed (GUID lines only — source logic unchanged).
+- `tests/static/compare_readback.py` (repaired): **EQUIVALENT 77 · RUNTIME 6 · UNEXPLAINED 0**. Documented equivalences: comments/descriptions/GUIDs, quoted vs unquoted names (the earlier "missing `GET/POST products`" was a comparator bug), whitespace/commas, default `type: inner`, default `error_type = "standard"`, `expect.to_throw {exception = ""}`, api_group attribute order, parentheses around complete values/atomic filter arguments.
+- **Runtime gates (not proven equivalent; must pass before acceptance):**
+
+  | Deployed object | Server normalization | Gate |
+  |---|---|---|
+  | `pmf/report/build_wave_report`, `GET survey-waves/{wave_id}/report`, `GET survey-waves/{wave_id}/participations` | `bool …?=false` defaults dropped (`unsegmented`, `summary`) | P02/P03 (omitted `unsegmented` → `false`, explicit true/false), P09, X02 |
+  | `POST hypotheses/{hypothesis_id}/experiments` | validation state stored in backtick expression mode | V02, V03 (no rejected experiment persisted), V04 (fields persist) |
+  | `pmf/evidence/validate_source` | parentheses dropped inside the survey `source_field` precondition | E05, E06, E08 |
+  | `GET survey-waves/{wave_id}/participations` | parentheses dropped in `slice:$offset:($offset + $input.per_page)` | X02 pagination |
+  | `pmf/report/count_wave` | inline test inputs stored as expression blocks | server-side unit tests (`xano unit_test run_all -p pmf -w 2 -b v1`) |
+- The repository source stays authoritative; Xano's re-printed text must never be adopted as source (some printed forms omit parentheses required by greedy filter binding).
+- Not verified by Claude: "no new business records" after the push (needs owner UI check or the scoped Metadata token); Goodz not inspected (all commands pinned to `-w 2`).
+
 ## One next action
-Prepare the first **server-side dry-run only** of the merged `xano/app` source against workspace `pmf`, ID 2, branch `v1`. Verify Git clean and synchronized, Xano unchanged, `auth/signup` External Access disabled, and ten business tables empty. The owner must separately configure `PMF_OWNER_USER_ID` using their verified `auth/me` ID before live API activation; do **not** create the test account or Metadata token for the dry-run. Temporarily enable direct push only with owner approval; capture exit status using `pipefail`. Require precisely one new `pmf-app` group, 48 new queries, 34 new functions, no table/auth updates/deletions. Stop after preview and disable direct push pending separate real-push approval.
+Runtime validation preparation (owner actions, each separately approved): set `PMF_OWNER_USER_ID` from the verified `auth/me` id; create one `@pmf-test.invalid` non-owner user; create a Metadata API token scoped to Workspace Content Read/Delete; confirm the ten business tables are still empty. Then run the HTTP suite with `--target live-pmf` (runbook §4), the server-side unit tests, and the manual checks; every runtime gate above and C01–C04 must pass (or the concurrency residual risk be explicitly accepted). Cleanup follows as a separate approval.
 
 ## Approved-stack status
 Xano selected; frontend still undecided between WeWeb and a coded frontend deployed on Vercel.

@@ -55,4 +55,5 @@ query "insights/{insight_id}" verb=GET {
   }
 
   response = $out
+  guid = "3zlUw8RqYmN_mKLUQj8hCRdWC_Y"
 }

@@ -23,4 +23,5 @@ function "pmf/insight/assert_reviewed" {
     input = {insight: {review_status: "draft"}}
     expect.to_throw
   }
+  guid = "i-X8Q6nH1pUc5A8bTHDmh_Ut8zQ"
 }

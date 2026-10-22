@@ -3,6 +3,7 @@
 Run: python3 -m unittest discover -s tests/api -p 'test_offline*.py'
 """
 import json
+import re
 import pathlib
 import subprocess
 import sys
@@ -609,26 +610,99 @@ class DeploymentChecks(unittest.TestCase):
             sys.argv = argv
             pathlib.Path(fh.name).unlink()
 
-    def test_readback_comparator(self):
+    def test_readback_comparator_on_exact_copy(self):
         with tempfile.TemporaryDirectory() as tmp:
             after, before = pathlib.Path(tmp, "after"), pathlib.Path(tmp, "before")
             for f in compare_readback.APP.rglob("*.xs"):
-                rel = f.relative_to(compare_readback.APP)
-                target = after / rel
+                target = after / f.relative_to(compare_readback.APP)
                 target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_text(f.read_text().replace("\n}\n", '\n  guid = "abc"\n}\n', 1))
-            (before / "table").mkdir(parents=True)
-            (after / "table").mkdir(parents=True)
-            (before / "table" / "user.xs").write_text("table user {}\n")
-            (after / "table" / "user.xs").write_text("table user {}\n")
-            sys_argv = sys.argv
-            try:
-                sys.argv = ["x", str(after), "--baseline", str(before)]
-                self.assertEqual(compare_readback.main(), 0)
-                (after / "table" / "user.xs").write_text("table user { changed }\n")
-                self.assertEqual(compare_readback.main(), 1)
-            finally:
-                sys.argv = sys_argv
+                target.write_text(f.read_text())
+            for d in (before, after):
+                (d / "table").mkdir(parents=True, exist_ok=True)
+                (d / "table" / "user.xs").write_text("table user {}\n")
+            report = compare_readback.compare(after, before)
+            self.assertEqual(report["structural_problems"], [])
+            self.assertEqual(report["counts"]["equivalent"], 83)
+            (after / "table" / "user.xs").write_text("table user { changed }\n")
+            self.assertTrue(any("pre-existing document changed" in p for p in compare_readback.compare(after, before)["structural_problems"]))
+
+
+class ReadbackClassification(unittest.TestCase):
+    """Regression fixtures taken from the observed post-deployment read-back."""
+
+    def cls(self, local, pulled, key=("function", "pmf/x")):
+        return compare_readback.classify(key, local, pulled)
+
+    def wrap(self, body, name='function "pmf/x"', guid=None):
+        return f"{name} {{\n  stack {{\n{body}\n  }}\n" + (f'  guid = "{guid}"\n' if guid else "") + "}\n"
+
+    def test_documented_formatting_is_equivalent(self):
+        cases = [
+            ('query "products" verb=GET {\n}\n', "query products verb=GET {\n}\n"),
+            (self.wrap('    var $r {\n      value = {a: 1, b: 2}\n    }'), self.wrap("    var $r {\n      value = {\n        a: 1\n        b: 2\n      }\n    }")),
+            (self.wrap('    db.query x {\n      join = {t: {table: "t", type: "inner", where: $db.x.id == $db.t.id}}\n    } as $q'),
+             self.wrap('    db.query x {\n      join = {t: {table: "t", where: $db.x.id == $db.t.id}}\n    } as $q')),
+            (self.wrap('    precondition ($a) {\n      error_type = "standard"\n      error = "X: y"\n    }'), self.wrap('    precondition ($a) {\n      error = "X: y"\n    }')),
+            (self.wrap("    test \"t\" {\n      expect.to_throw\n    }"), self.wrap('    test "t" {\n      expect.to_throw {\n        exception = ""\n      }\n    }')),
+            (self.wrap("    var $o {\n      value = {\n        eligible_count : ($rows|count)\n      }\n    }"), self.wrap("    var $o {\n      value = {\n        eligible_count: $rows|count\n      }\n    }")),
+            (self.wrap('    var $o {\n      value = $c|set:"segment":($segment)\n    }'), self.wrap('    var $o {\n      value = $c|set:"segment":$segment\n    }')),
+            (self.wrap("    var $o {\n      value = $items|push:($row)\n    }"), self.wrap("    var $o {\n      value = $items|push:$row\n    }")),
+            (self.wrap("    // comment\n    var $o {\n      value = 1\n    }", guid="abc"), self.wrap("    var $o {\n      value = 1\n    }", guid="xyz")),
+        ]
+        for local, pulled in cases:
+            with self.subTest(local=local[:40]):
+                self.assertEqual(self.cls(local, pulled)[0], "EQUIVALENT")
+
+    def test_api_group_attribute_order(self):
+        a = 'api_group "PMF App" {\n  canonical = "pmf-app"\n  history = 0\n  tags = ["pmf"]\n}\n'
+        b = 'api_group "PMF App" {\n  canonical = "pmf-app"\n  tags = ["pmf"]\n  history = 0\n}\n'
+        self.assertEqual(compare_readback.classify(("api_group", "PMF App"), a, b)[0], "EQUIVALENT")
+        c = b.replace("history = 0", "history = 100")
+        self.assertEqual(compare_readback.classify(("api_group", "PMF App"), a, c)[0], "UNEXPLAINED")
+
+    def assert_runtime(self, local, pulled, expected_class):
+        status, items = self.cls(local, pulled)
+        self.assertEqual(status, "RUNTIME")
+        self.assertIn(expected_class, [c for c, _ in items])
+
+    def test_known_uncertainties_are_runtime_not_equivalent(self):
+        self.assert_runtime(self.wrap("  input {\n    bool unsegmented?=false\n  }"), self.wrap("  input {\n    bool unsegmented?\n  }"), "missing_default")
+        self.assert_runtime(self.wrap('    var $s {\n      value = {a: $d|get:"a"}\n    }'), self.wrap('    var $s {\n      value = `{a: $d|get:"a"}`\n    }'), "expression_mode")
+        self.assert_runtime(self.wrap("    test \"t\" {\n      input = {\n        rows: [\n          {a: 1}\n        ]\n      }\n    }"),
+                            self.wrap("    test \"t\" {\n      input = {\n        rows: ```\n          [\n            {a: 1}\n          ]\n          ```\n      }\n    }"), "test_expression_block")
+        self.assert_runtime(self.wrap("    var $i {\n      value = $f|slice:$o:($o + $p)\n    }"), self.wrap("    var $i {\n      value = $f\n        |slice:$o:$o + $p\n    }"), "grouping")
+        self.assert_runtime(self.wrap('    precondition ($x != null && (["a", "b"]|some:$$ == $x)) {\n      error = "E: e"\n    }'),
+                            self.wrap('    precondition ($x != null && ["a", "b"]|some:$$ == $x) {\n      error = "E: e"\n    }'), "grouping")
+        self.assert_runtime(self.wrap('    var.update $items {\n      value = $items|push:($s|set:"c":$n)\n    }'), self.wrap('    var.update $items {\n      value = $items|push:$s|set:"c":$n\n    }'), "grouping")
+
+    def test_real_changes_are_unexplained(self):
+        base = self.wrap('    var $v {\n      value = $rows|filter:$$.level == "very"\n    }\n    precondition ($a > 0) {\n      error = "E: e"\n    }')
+        changed = [
+            base.replace('"very"', '"somewhat"'),
+            base.replace("$a > 0", "$a >= 0"),
+            base.replace('    precondition ($a > 0) {\n      error = "E: e"\n    }', ""),
+            base.replace("$$.level", "$$.status"),
+        ]
+        for pulled in changed:
+            self.assertEqual(self.cls(base, pulled)[0], "UNEXPLAINED")
+        self.assertEqual(self.cls(self.wrap("  input {\n    bool u?=false\n  }"), self.wrap("  input {\n    bool u?=true\n  }"))[0], "UNEXPLAINED")
+
+    def test_structural_failures(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            after = pathlib.Path(tmp, "after")
+            for f in compare_readback.APP.rglob("*.xs"):
+                target = after / f.relative_to(compare_readback.APP)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(f.read_text())
+            fn = next(after.rglob("require_owner.xs"))
+            fn.write_text(re.sub(r'guid = "[^"]+"', 'guid = "different"', fn.read_text()))
+            extra = after / "function" / "pmf" / "extra.xs"
+            extra.write_text('function "pmf/extra" {\n}\n')
+            problems = compare_readback.compare(after)["structural_problems"]
+            self.assertTrue(any("guid mismatch" in p for p in problems))
+            self.assertTrue(any("unexpected PMF object" in p for p in problems))
+            next(after.rglob("products_GET.xs")).unlink()
+            self.assertTrue(any("missing in Xano" in p for p in compare_readback.compare(after)["structural_problems"]))
 
 
 if __name__ == "__main__":

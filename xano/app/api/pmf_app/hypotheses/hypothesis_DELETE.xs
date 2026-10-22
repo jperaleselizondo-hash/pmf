@@ -40,4 +40,5 @@ query "hypotheses/{hypothesis_id}" verb=DELETE {
   }
 
   response = {deleted: true, id: $input.hypothesis_id}
+  guid = "v8C2QEAWE_RSX1-W_8oLzXVZRr8"
 }

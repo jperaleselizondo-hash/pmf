@@ -48,4 +48,5 @@ query "survey-waves/{wave_id}" verb=GET {
   }
 
   response = $out
+  guid = "pMmHOaaNSMu9R3cE7tgQ2VDwISU"
 }

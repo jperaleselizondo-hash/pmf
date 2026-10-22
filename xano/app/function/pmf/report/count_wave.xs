@@ -128,4 +128,5 @@ function "pmf/report/count_wave" {
       value = 1
     }
   }
+  guid = "MGCFw79MKQA-FknJTp3ijswRdng"
 }

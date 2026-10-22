@@ -23,4 +23,5 @@ function "pmf/access/interview" {
   }
 
   response = {record: $interview, customer: $customer.record, product_id: $customer.product_id}
+  guid = "6sQLjqou1RhnTga7B3rkslwuPIA"
 }

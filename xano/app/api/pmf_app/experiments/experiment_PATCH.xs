@@ -104,4 +104,5 @@ query "experiments/{experiment_id}" verb=PATCH {
   }
 
   response = $updated
+  guid = "ZIvkFKVJzNmI_CQRVtbDaQWss2Q"
 }

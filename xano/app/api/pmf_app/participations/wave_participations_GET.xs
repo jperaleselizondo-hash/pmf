@@ -89,4 +89,5 @@ query "survey-waves/{wave_id}/participations" verb=GET {
   }
 
   response = {items: $items, curPage: $input.page, perPage: $input.per_page, itemsTotal: $filtered|count}
+  guid = "fMJh9iZYLvqogvzswlyEM55gOYg"
 }

@@ -40,4 +40,5 @@ query "survey-waves/{wave_id}" verb=DELETE {
   }
 
   response = {deleted: true, id: $input.wave_id}
+  guid = "oZYcm0_KngCcyO5UUW1dZ8MZPFQ"
 }

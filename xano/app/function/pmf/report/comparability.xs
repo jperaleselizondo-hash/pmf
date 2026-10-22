@@ -86,4 +86,5 @@ function "pmf/report/comparability" {
     changed_fields      : $changed
     repeat_customer_ids : $repeat_ids
   }
+  guid = "FpJ1_FFJ_CyUevbT5zSiBT2D8eo"
 }

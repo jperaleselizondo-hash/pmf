@@ -45,4 +45,5 @@ query "interviews/{interview_id}" verb=GET {
   }
 
   response = $out
+  guid = "fFO2SMMa9D8slJeRaMbMvakIsbc"
 }

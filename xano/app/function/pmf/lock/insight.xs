@@ -27,4 +27,5 @@ function "pmf/lock/insight" {
   }
 
   response = $locked
+  guid = "PIV8HNwZ6PmQsORtg4xNTf-w8ic"
 }

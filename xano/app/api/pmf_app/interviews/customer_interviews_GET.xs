@@ -43,4 +43,5 @@ query "customers/{customer_id}/interviews" verb=GET {
   }
 
   response = $page|set:"items":$items
+  guid = "SvkYhcy5VEwQ3-bP7WKYI2xr1hA"
 }

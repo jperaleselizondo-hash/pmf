@@ -105,4 +105,5 @@ function "pmf/validation/validate_hypothesis_status" {
     input = {current: "testing", next: "proposed", experiments: [{conclusion: null}]}
     expect.to_throw
   }
+  guid = "LC8lmEzXgDKOMxfmWAtcoOtmwNM"
 }

@@ -23,4 +23,5 @@ function "pmf/access/experiment" {
   }
 
   response = {record: $experiment, hypothesis: $hypothesis.record, insight: $hypothesis.insight, product_id: $hypothesis.product_id}
+  guid = "A0gJI3a4ez66PxQLAjslTtMlfls"
 }
