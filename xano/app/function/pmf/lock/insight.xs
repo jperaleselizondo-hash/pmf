@@ -1,5 +1,7 @@
-// PMF Engine: serialize writes on one insight and its evidence/hypothesis family (PROVISIONAL, U13)
-// Call first inside db.transaction; proven only after isolated concurrency tests C02/C04 pass.
+// PMF Engine: INTENDED serialization point for one insight and its evidence/hypothesis family (UNVERIFIED, U13)
+// Called first inside db.transaction. Rewriting an unchanged column is an attempt to take a row lock; it is
+// not known to lock anything until the isolated repeated-trial tests C02/C04 pass with concurrent overlap
+// AND a negative control (this lock disabled) shows they fail. Any failed invariant blocks deployment.
 function "pmf/lock/insight" {
   description = "Lock an insight row and return its current state"
   input {

@@ -1,6 +1,8 @@
-// PMF Engine: serialize writes on one survey wave (PROVISIONAL, U13)
-// Call first inside db.transaction. A no-op self-update is expected to hold the row lock until commit;
-// this must be proven by isolated concurrency tests C01/C03 before deployment.
+// PMF Engine: INTENDED serialization point for writes on one survey wave (UNVERIFIED, U13)
+// Called first inside db.transaction. The rewrite of an unchanged column is an attempt to take a row lock
+// held until commit; there is NO runtime evidence yet that Xano issues the UPDATE (it may skip unchanged
+// values) or that the transaction holds the lock. Deployment is blocked until the isolated repeated-trial
+// tests C01/C03 pass with concurrent overlap AND a negative control (this lock disabled) shows they fail.
 function "pmf/lock/wave" {
   description = "Lock a survey wave row and return its current state"
   input {

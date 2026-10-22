@@ -4,32 +4,36 @@
 Implements the test matrix of docs/API_V1_PROPOSAL.md §6 / Appendix R8.5. Standard library only.
 
 Required environment (never commit values):
-  PMF_TEST_BASE_URL        https://<isolated-host>/api:pmf-app
-  PMF_TEST_AUTH_URL        https://<isolated-host>/api:<authentication canonical in the isolated env>
-  PMF_TEST_ENV_HOST        <isolated-host> as reported by `xano ephemeral get` (operator-recorded)
-  PMF_TEST_TENANT_NAME     isolated tenant name
+  PMF_TEST_BASE_URL        https://<tenant xano_domain>/api:pmf-app[:<branch>]
+  PMF_TEST_AUTH_URL        https://<tenant xano_domain>/api:<authentication canonical>[:<branch>]
+  PMF_TEST_TENANT_NAME     ephemeral tenant name in workspace 2
   PMF_TEST_OWNER_TOKEN     token of the synthetic designated owner (email @pmf-test.invalid)
   PMF_TEST_INTRUDER_TOKEN  token of a second synthetic user (email @pmf-test.invalid)
 
 Usage:
-  python3 tests/api/pmf_api_tests.py --confirm-tenant <name> [--skip-concurrency] [--only W01,P01]
+  python3 tests/api/pmf_api_tests.py --confirm-tenant <name> [--skip-concurrency] [--trials 25] [--only W01,P01]
 
-The run aborts before its first write unless the configuration and the read-only canary prove an
-isolated, synthetic-only environment. Manual checks (S03, S08, S09) are listed at the end.
+Preflight (aborts with exit 2 before any request with a write verb):
+  1. configuration checks (live host denied; exact /api:pmf-app path; same host/branch; tenant confirmed)
+  2. authoritative identity: `xano ephemeral get <name> -p pmf -w 2 -o json` must report the configured
+     host as the tenant's domain, an unexpired ephemeral_expires_at and a usable state
+  3. read-only canary: synthetic owner/intruder identities, synthetic-only products
+Gate (exit 3): S01 (401 sweep) and S02 (403 sweep) always run and must pass before fixture creation.
+Concurrency (C01–C04) uses repeated barrier-synchronized trials; violations or insufficient overlap fail.
+Manual checks (S03, S08, S09) are listed at the end.
 """
 import argparse
 import json
 import os
 import sys
-import threading
 import time
-import urllib.error
-import urllib.parse
-import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import pmf_reference as ref  # noqa: E402
-from safety import UnsafeEnvironment, check_canary, check_config  # noqa: E402
+from concurrency import gate, run_trials  # noqa: E402
+from http_client import Api, urllib_transport  # noqa: E402
+from safety import (UnsafeEnvironment, check_canary, check_config, check_tenant_metadata,  # noqa: E402
+                    fetch_tenant_metadata)
 
 DAY = 86_400_000
 MISSING_ID = 999_999_999
@@ -75,51 +79,6 @@ SAMPLE_BODIES = {
 }
 
 
-class Response:
-    def __init__(self, status, body):
-        self.status = status
-        self.body = body
-
-    @property
-    def code(self):
-        message = (self.body or {}).get("message", "") if isinstance(self.body, dict) else ""
-        return message.split(":", 1)[0] if ":" in message else message
-
-    def __repr__(self):
-        return f"<{self.status} {json.dumps(self.body)[:300]}>"
-
-
-class Api:
-    """Minimal JSON client. Records every response body for leakage checks (S06/S07)."""
-
-    def __init__(self, base, token, recorder):
-        self.base = base.rstrip("/")
-        self.token = token
-        self.recorder = recorder
-
-    def call(self, method, path, body=None, params=None):
-        url = f"{self.base}/{path}"
-        if params:
-            url += "?" + urllib.parse.urlencode({k: v for k, v in params.items() if v is not None})
-        data = json.dumps(body).encode() if body is not None and method != "GET" else None
-        req = urllib.request.Request(url, data=data, method=method)
-        req.add_header("Content-Type", "application/json")
-        req.add_header("Accept", "application/json")
-        if self.token:
-            req.add_header("Authorization", f"Bearer {self.token}")
-        try:
-            with urllib.request.urlopen(req, timeout=60) as resp:
-                status, raw = resp.status, resp.read()
-        except urllib.error.HTTPError as exc:
-            status, raw = exc.code, exc.read()
-        try:
-            parsed = json.loads(raw.decode() or "null")
-        except ValueError:
-            parsed = {"raw": raw.decode(errors="replace")[:500]}
-        self.recorder.append(parsed)
-        return Response(status, parsed)
-
-
 class Failure(AssertionError):
     pass
 
@@ -145,13 +104,17 @@ def close(a, b, tol=1e-9):
 
 
 class Suite:
-    def __init__(self, base, auth_base, owner_token, intruder_token, tag):
+    def __init__(self, base, auth_base, owner_token, intruder_token, tag, host, transport=urllib_transport, trials=25):
         self.recorded = []
-        self.owner = Api(base, owner_token, self.recorded)
-        self.intruder = Api(base, intruder_token, self.recorded)
-        self.anon = Api(base, None, self.recorded)
-        self.owner_auth = Api(auth_base, owner_token, self.recorded)
-        self.intruder_auth = Api(auth_base, intruder_token, self.recorded)
+        self.requests = []
+        biz = dict(recorder=self.recorded, allowed_routes=ROUTES, transport=transport, log=self.requests, allowed_host=host)
+        auth = dict(recorder=self.recorded, allowed_routes=[("GET", "auth/me")], transport=transport, log=self.requests, allowed_host=host)
+        self.owner = Api(base, owner_token, **biz)
+        self.intruder = Api(base, intruder_token, **biz)
+        self.anon = Api(base, None, **biz)
+        self.owner_auth = Api(auth_base, owner_token, **auth)
+        self.intruder_auth = Api(auth_base, intruder_token, **auth)
+        self.trials = trials
         self.tag = tag
         self.marker = f"SENSITIVE-MARKER-{tag}"
         self.fx = {}
@@ -536,6 +499,19 @@ def p05(s):
     s.fx["W_P05"] = w
 
 
+@case("P06", "segment filter uses segment_id_snapshot, not the customer's current segment")
+def p06(s):
+    wid = s.fx["W1"]["id"]
+    ok(s.owner.call("PATCH", f"customers/{s.fx['C1']['id']}", {"segment_id": s.fx["A2"]["id"]}))
+    try:
+        a2 = s.report(wid, segment_id=s.fx["A2"]["id"])["selected"]
+        a1 = s.report(wid, segment_id=s.fx["A1"]["id"])["selected"]
+        expect(a2["valid_response_count"] == 0 and a2["pmf_percent"] is None, f"A2 picked up C1: {a2}")
+        expect(a1["very_count"] == 1, "A1 lost C1's snapshot response")
+    finally:
+        ok(s.owner.call("PATCH", f"customers/{s.fx['C1']['id']}", {"segment_id": s.fx["A1"]["id"]}))
+
+
 @case("P07", "repeat respondents and definition changes are flagged; first-time block excludes them")
 def p07(s):
     rep = s.report(s.fx["W2"]["id"])
@@ -700,66 +676,103 @@ def v05(s):
     rejected(s.owner.call("DELETE", f"insights/{s.fx['INS']['id']}"), 400, "IN_USE")
 
 
-# ---------------- Concurrency (U13: must pass before deployment) ----------------
-def parallel(calls):
-    results = [None] * len(calls)
-
-    def worker(i, fn):
-        results[i] = fn()
-
-    threads = [threading.Thread(target=worker, args=(i, fn)) for i, fn in enumerate(calls)]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join()
-    return results
+# ---------------- Concurrency (U13 gate: any failure blocks deployment) ----------------
+def require_gate(result):
+    message = gate(result)
+    expect(message is None, message)
 
 
-@case("C01", "parallel duplicate participation: exactly one succeeds")
+@case("C01", "parallel duplicate participation: exactly one row per trial")
 def c01(s):
-    w = s.wave(s.fx["A"]["id"], "C01", "v1", started_days_ago=1)
-    cid = s.fx["C7"]["id"]
-    rs = parallel([lambda: s.owner.call("POST", f"survey-waves/{w['id']}/participations", {"customer_ids": [cid]})] * 4)
-    expect(sum(1 for r in rs if r.status == 200) == 1, f"statuses {[r.status for r in rs]}")
-    items = ok(s.owner.call("GET", f"survey-waves/{w['id']}/participations"))["items"]
-    expect(len(items) == 1, f"{len(items)} rows")
+    def setup(i):
+        w = s.wave(s.fx["A"]["id"], f"C01-{i}", "v1", started_days_ago=1)
+        return {"wave": w["id"], "customer": s.fx["C7"]["id"]}
+
+    def act(ctx):
+        return s.owner.call("POST", f"survey-waves/{ctx['wave']}/participations", {"customer_ids": [ctx["customer"]]})
+
+    def invariant(ctx, rs):
+        rows = ok(s.owner.call("GET", f"survey-waves/{ctx['wave']}/participations"))["items"]
+        wins = sum(1 for r in rs if r.status == 200)
+        if len(rows) != 1 or wins != 1:
+            return f"{len(rows)} rows, {wins} successes"
+        return None
+
+    require_gate(run_trials("C01", s.trials, setup, [act] * 4, invariant))
 
 
-@case("C02", "parallel deletes cannot remove the last evidence of a reviewed insight")
+@case("C02", "parallel deletes never remove the last evidence of a reviewed insight")
 def c02(s):
-    ins = ok(s.owner.call("POST", f"products/{s.fx['A']['id']}/insights", {"type": "obstacle", "statement": "Concurrency probe"}))
-    evs = [ok(s.owner.call("POST", f"insights/{ins['id']}/evidence", {"interview_id": s.fx["I2"]["id"], "source_field": "notes", "excerpt": f"probe {i}", "relationship": "supports"}))["evidence"] for i in range(2)]
-    ok(s.owner.call("POST", f"insights/{ins['id']}/review-status", {"review_status": "reviewed"}))
-    parallel([lambda e=e: s.owner.call("DELETE", f"evidence/{e['id']}") for e in evs])
-    remaining = ok(s.owner.call("GET", f"insights/{ins['id']}"))["evidence"]
-    expect(len(remaining) >= 1, "reviewed insight lost all evidence")
+    def setup(i):
+        ins = ok(s.owner.call("POST", f"products/{s.fx['A']['id']}/insights", {"type": "obstacle", "statement": f"Concurrency probe {i}"}))
+        evs = [ok(s.owner.call("POST", f"insights/{ins['id']}/evidence", {"interview_id": s.fx["I2"]["id"], "source_field": "notes", "excerpt": f"probe {i}-{k}", "relationship": "supports"}))["evidence"]["id"] for k in range(2)]
+        ok(s.owner.call("POST", f"insights/{ins['id']}/review-status", {"review_status": "reviewed"}))
+        return {"insight": ins["id"], "evidence": evs}
+
+    def invariant(ctx, rs):
+        detail = ok(s.owner.call("GET", f"insights/{ctx['insight']}"))
+        if detail["review_status"] == "reviewed" and len(detail["evidence"]) < 1:
+            return "reviewed insight lost all evidence"
+        if sum(1 for r in rs if r.status == 200) > 1:
+            return "both deletes succeeded"
+        return None
+
+    actions = [lambda ctx, k=k: s.owner.call("DELETE", f"evidence/{ctx['evidence'][k]}") for k in range(2)]
+    require_gate(run_trials("C02", s.trials, setup, actions, invariant))
 
 
-@case("C03", "closing a wave and editing a response concurrently never writes after close")
+@case("C03", "close vs response edit: no response is written after the wave closed")
 def c03(s):
-    w = s.wave(s.fx["A"]["id"], "C03", "v1", started_days_ago=1)
-    p = s.add(w["id"], [s.fx["C6"]["id"]])[s.fx["C6"]["id"]]
-    rs = parallel([
-        lambda: s.owner.call("POST", f"survey-waves/{w['id']}/status", {"action": "close"}),
-        lambda: s.owner.call("PATCH", f"participations/{p['id']}", {"responded_at": s.now - 60_000, "disappointment_level": "very"}),
-    ])
-    wave = ok(s.owner.call("GET", f"survey-waves/{w['id']}"))
-    row = ok(s.owner.call("GET", f"survey-waves/{w['id']}/participations"))["items"][0]
-    if rs[1].status == 200 and row["responded_at"] is not None:
-        expect(row["updated_at"] <= wave["closed_at"], "response written after the wave closed")
+    def setup(i):
+        w = s.wave(s.fx["A"]["id"], f"C03-{i}", "v1", started_days_ago=1)
+        p = s.add(w["id"], [s.fx["C6"]["id"]])[s.fx["C6"]["id"]]
+        return {"wave": w["id"], "participation": p["id"]}
+
+    def close_wave(ctx):
+        return s.owner.call("POST", f"survey-waves/{ctx['wave']}/status", {"action": "close"})
+
+    def respond(ctx):
+        return s.owner.call("PATCH", f"participations/{ctx['participation']}", {"responded_at": s.now - 60_000, "disappointment_level": "very"})
+
+    def invariant(ctx, rs):
+        if rs[0].status != 200:
+            return f"close failed: {rs[0]!r}"
+        if rs[1].status not in (200, 400) or (rs[1].status == 400 and rs[1].code != "WAVE_CLOSED"):
+            return f"unexpected response edit outcome: {rs[1]!r}"
+        wave = ok(s.owner.call("GET", f"survey-waves/{ctx['wave']}"))
+        row = ok(s.owner.call("GET", f"survey-waves/{ctx['wave']}/participations"))["items"][0]
+        if rs[1].status == 200 and (row["updated_at"] is None or row["updated_at"] > wave["closed_at"]):
+            return "response written after the wave closed"
+        if rs[1].status == 400 and row["responded_at"] is not None:
+            return "rejected edit was persisted"
+        return None
+
+    require_gate(run_trials("C03", s.trials, setup, [close_wave, respond], invariant))
 
 
-@case("C04", "creating a hypothesis and unreviewing concurrently never leaves a hypothesis on a draft insight")
+@case("C04", "hypothesis creation vs unreview never leaves a hypothesis on a draft insight")
 def c04(s):
-    ins = ok(s.owner.call("POST", f"products/{s.fx['A']['id']}/insights", {"type": "benefit", "statement": "Race probe"}))
-    ok(s.owner.call("POST", f"insights/{ins['id']}/evidence", {"interview_id": s.fx["I2"]["id"], "source_field": "notes", "excerpt": "race", "relationship": "supports"}))
-    ok(s.owner.call("POST", f"insights/{ins['id']}/review-status", {"review_status": "reviewed"}))
-    parallel([
-        lambda: s.owner.call("POST", f"insights/{ins['id']}/hypotheses", {"statement": "s", "expected_outcome": "o", "success_metric": "m"}),
-        lambda: s.owner.call("POST", f"insights/{ins['id']}/review-status", {"review_status": "draft"}),
-    ])
-    detail = ok(s.owner.call("GET", f"insights/{ins['id']}"))
-    expect(not (detail["review_status"] == "draft" and detail["hypotheses"]), "hypothesis attached to a draft insight")
+    def setup(i):
+        ins = ok(s.owner.call("POST", f"products/{s.fx['A']['id']}/insights", {"type": "benefit", "statement": f"Race probe {i}"}))
+        ok(s.owner.call("POST", f"insights/{ins['id']}/evidence", {"interview_id": s.fx["I2"]["id"], "source_field": "notes", "excerpt": f"race {i}", "relationship": "supports"}))
+        ok(s.owner.call("POST", f"insights/{ins['id']}/review-status", {"review_status": "reviewed"}))
+        return {"insight": ins["id"]}
+
+    def create(ctx):
+        return s.owner.call("POST", f"insights/{ctx['insight']}/hypotheses", {"statement": "s", "expected_outcome": "o", "success_metric": "m"})
+
+    def unreview(ctx):
+        return s.owner.call("POST", f"insights/{ctx['insight']}/review-status", {"review_status": "draft"})
+
+    def invariant(ctx, rs):
+        detail = ok(s.owner.call("GET", f"insights/{ctx['insight']}"))
+        if detail["review_status"] == "draft" and detail["hypotheses"]:
+            return "hypothesis attached to a draft insight"
+        if rs[0].status == 200 and rs[1].status == 200:
+            return "both operations succeeded"
+        return None
+
+    require_gate(run_trials("C04", s.trials, setup, [create, unreview], invariant))
 
 
 # ---------------- End to end ----------------
@@ -775,14 +788,46 @@ def x01(s):
     expect(any(i["id"] == s.fx["INS"]["id"] for i in lookups["reviewed_insights"]), "lookups missing reviewed insight")
 
 
+@case("X02", "remaining read/list/update routes behave as specified (route-level coverage)")
+def x02(s):
+    a, fx = s.fx["A"]["id"], s.fx
+    detail = ok(s.owner.call("GET", f"products/{a}"))
+    expect(detail["counts"]["segments"] >= 2 and detail["counts"]["customers"] >= 7 and detail["counts"]["interviews"] >= 2, f"counts {detail['counts']}")
+    updated = ok(s.owner.call("PATCH", f"products/{a}", {"description": "Synthetic description"}))
+    expect(updated["description"] == "Synthetic description", "product description not updated")
+    expect(ok(s.owner.call("PATCH", f"products/{a}", {"description": "   "}))["description"] is None, "blank text must clear")
+    rejected(s.owner.call("PATCH", f"products/{a}", {"name": "  "}), 400, "FIELD_REQUIRED")
+    segments = ok(s.owner.call("GET", f"products/{a}/segments"))["items"]
+    expect(all("customer_count" in x for x in segments), "segment customer_count missing")
+    rejected(s.owner.call("PATCH", f"segments/{fx['A2']['id']}", {"name": "Solo founders"}), 400, "DUPLICATE_SEGMENT_NAME")
+    expect(ok(s.owner.call("PATCH", f"segments/{fx['A2']['id']}", {"criteria": "10+ staff"}))["criteria"] == "10+ staff", "segment criteria")
+    found = ok(s.owner.call("GET", f"products/{a}/customers", params={"q": "SYNTH C3", "segment_id": fx["A2"]["id"]}))["items"]
+    expect([c["id"] for c in found] == [fx["C3"]["id"]], f"customer search {[c['id'] for c in found]}")
+    rejected(s.owner.call("GET", f"products/{a}/customers", params={"segment_id": fx["B1"]["id"]}), 400, "CROSS_PRODUCT_REFERENCE")
+    capped = s.owner.call("GET", f"products/{a}/customers", params={"per_page": 101})
+    expect(capped.status == 400, f"per_page above 100 must be rejected: {capped!r}")
+    c1 = ok(s.owner.call("GET", f"customers/{fx['C1']['id']}"))
+    expect(c1["segment"]["id"] == fx["A1"]["id"] and c1["interviews"] and {p["status"] for p in c1["participations"]} >= {"valid"}, "customer detail")
+    waves = ok(s.owner.call("GET", f"products/{a}/survey-waves", params={"per_page": 100}))["items"]
+    w1 = next(w for w in waves if w["id"] == fx["W1"]["id"])
+    expect(w1["state"] == "closed" and w1["eligible_count"] == 5, f"wave list {w1}")
+    reviewed = ok(s.owner.call("GET", f"products/{a}/insights", params={"review_status": "reviewed"}))["items"]
+    expect(any(i["id"] == fx["INS"]["id"] and i["hypothesis_count"] >= 1 for i in reviewed), "insight filter")
+    ev = ok(s.owner.call("PATCH", f"evidence/{fx['EV_SUP']['id']}", {"relationship": "supports", "excerpt": "Reconciling invoices takes two hours every Friday."}))
+    expect(ev["source_field"] == "notes", "evidence source_field changed")
+    rejected(s.owner.call("PATCH", f"evidence/{fx['EV_SUP']['id']}", {"source_field": "main_benefit"}), 400, "INVALID_SOURCE_FIELD")
+    hyps = ok(s.owner.call("GET", f"products/{a}/hypotheses", params={"status": "validated"}))["items"]
+    expect(any(h["id"] == fx["HYP"]["id"] and h["experiment_count"] >= 1 for h in hyps), "hypothesis filter")
+
+
 ORDER_PRE = ["S01", "S02"]
 RUN_ORDER = [
     "S04", "S05", "M01", "M02", "M03", "M04", "M05", "M06", "M07", "R01", "R04",
     "W01", "W02", "W03", "W04", "W05", "W06", "W07", "W10", "W11",
-    "P01", "P02", "P03", "P04", "P05", "P07", "P08", "P09", "W08", "W09",
+    "P01", "P02", "P03", "P04", "P05", "P06", "P07", "P08", "P09", "W08", "W09",
     "E00", "I01", "E01", "E02", "E03", "E04", "E05", "E06", "E07", "E08", "E09", "S07", "R02", "R03", "R05",
     "I02", "I03", "V01", "I04", "I05", "V02", "V03", "V04", "V05",
-    "C01", "C02", "C03", "C04", "X01", "S06",
+    "X02", "C01", "C02", "C03", "C04", "X01", "S06",
 ]
 assert sorted(ORDER_PRE + RUN_ORDER) == sorted(t[0] for t in TESTS), "run order must cover every test exactly once"
 MANUAL = [
@@ -792,52 +837,80 @@ MANUAL = [
 ]
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--confirm-tenant", required=True)
-    parser.add_argument("--skip-concurrency", action="store_true")
-    parser.add_argument("--only", default="")
-    args = parser.parse_args()
-    env = os.environ
-    try:
-        check_config(env.get("PMF_TEST_BASE_URL"), env.get("PMF_TEST_AUTH_URL"), env.get("PMF_TEST_ENV_HOST"),
-                     env.get("PMF_TEST_TENANT_NAME"), args.confirm_tenant,
-                     env.get("PMF_TEST_OWNER_TOKEN"), env.get("PMF_TEST_INTRUDER_TOKEN"))
-    except UnsafeEnvironment as exc:
-        print(f"ABORT (configuration): {exc}")
-        return 2
+GATE_EXIT = 3
 
-    tag = time.strftime("%Y%m%d%H%M%S")
-    s = Suite(env["PMF_TEST_BASE_URL"], env["PMF_TEST_AUTH_URL"], env["PMF_TEST_OWNER_TOKEN"], env["PMF_TEST_INTRUDER_TOKEN"], tag)
-    owner_me = s.owner_auth.call("GET", "auth/me")
-    intruder_me = s.intruder_auth.call("GET", "auth/me")
-    products = s.owner.call("GET", "products", params={"per_page": 100})
+
+def preflight(env, confirm_tenant, metadata_provider=fetch_tenant_metadata):
+    """Configuration + authoritative tenant identity. No HTTP request is made here."""
+    cfg = check_config(env.get("PMF_TEST_BASE_URL"), env.get("PMF_TEST_AUTH_URL"), env.get("PMF_TEST_TENANT_NAME"),
+                       confirm_tenant, env.get("PMF_TEST_OWNER_TOKEN"), env.get("PMF_TEST_INTRUDER_TOKEN"))
+    meta = metadata_provider(env["PMF_TEST_TENANT_NAME"])
+    check_tenant_metadata(meta, env["PMF_TEST_TENANT_NAME"], cfg["host"])
+    return cfg
+
+
+def run_suite(env, confirm_tenant, *, transport=urllib_transport, metadata_provider=fetch_tenant_metadata,
+              skip_concurrency=False, only=(), trials=25, out=print):
+    """Returns (exit_code, suite). Exit 2 = unsafe environment, 3 = S01/S02 gate failed, 1 = test failures."""
     try:
+        cfg = preflight(env, confirm_tenant, metadata_provider)
+    except UnsafeEnvironment as exc:
+        out(f"ABORT (preflight): {exc}")
+        return 2, None
+    s = Suite(env["PMF_TEST_BASE_URL"], env["PMF_TEST_AUTH_URL"], env["PMF_TEST_OWNER_TOKEN"],
+              env["PMF_TEST_INTRUDER_TOKEN"], time.strftime("%Y%m%d%H%M%S"), cfg["host"], transport, trials)
+    try:
+        owner_me = s.owner_auth.call("GET", "auth/me")
+        intruder_me = s.intruder_auth.call("GET", "auth/me")
+        products = s.owner.call("GET", "products", params={"per_page": 100})
         if owner_me.status != 200 or intruder_me.status != 200 or products.status != 200:
             raise UnsafeEnvironment(f"canary requests failed: {owner_me.status}/{intruder_me.status}/{products.status}")
         check_canary(owner_me.body, intruder_me.body, products.body)
     except UnsafeEnvironment as exc:
-        print(f"ABORT (canary): {exc}")
-        return 2
+        out(f"ABORT (canary): {exc}")
+        return 2, s
 
-    only = {t.strip() for t in args.only.split(",") if t.strip()}
     by_id = {t[0]: t for t in TESTS}
-    s.run([by_id[t] for t in ORDER_PRE], only)
+    s.run([by_id[t] for t in ORDER_PRE])  # the gate ignores --only
+    gate_failures = [r for r in s.results if r[0] in ORDER_PRE and r[1] != "PASS"]
+    if gate_failures:
+        for tid, status, desc, detail in gate_failures:
+            out(f"{status:5} {tid:4} {desc} {detail}")
+        out("ABORT (gate): S01/S02 failed; no fixture or business data was created")
+        return GATE_EXIT, s
+
     try:
         s.build_fixture()
     except Exception as exc:  # noqa: BLE001
-        print(f"FIXTURE FAILED: {exc}")
-        return 1
-    s.run([by_id[t] for t in RUN_ORDER if not (args.skip_concurrency and t.startswith("C"))], only)
+        out(f"FIXTURE FAILED: {exc}")
+        return 1, s
+    selected = set(only)
+    s.run([by_id[t] for t in RUN_ORDER if not (skip_concurrency and t.startswith("C"))], selected or None)
 
     width = max(len(r[2]) for r in s.results) if s.results else 10
     for tid, status, desc, detail in s.results:
-        print(f"{status:5} {tid:4} {desc:{width}} {detail}")
+        out(f"{status:5} {tid:4} {desc:{width}} {detail}")
     for tid, desc in MANUAL:
-        print(f"MANUAL {tid:4} {desc}")
+        out(f"MANUAL {tid:4} {desc}")
+    if skip_concurrency:
+        out("NOTE  concurrency gate C01–C04 skipped: this run cannot authorize deployment (U13)")
     failed = [r for r in s.results if r[1] != "PASS"]
-    print(f"\n{len(s.results) - len(failed)} passed, {len(failed)} failed/error, {len(MANUAL)} manual")
-    return 1 if failed else 0
+    out(f"\n{len(s.results) - len(failed)} passed, {len(failed)} failed/error, {len(MANUAL)} manual")
+    return (1 if failed else 0), s
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--confirm-tenant", required=True)
+    parser.add_argument("--skip-concurrency", action="store_true")
+    parser.add_argument("--trials", type=int, default=25)
+    parser.add_argument("--only", default="")
+    args = parser.parse_args()
+    if args.trials < 10:
+        parser.error("--trials must be at least 10 for the concurrency gate")
+    only = [t.strip() for t in args.only.split(",") if t.strip()]
+    code, _ = run_suite(os.environ, args.confirm_tenant, skip_concurrency=args.skip_concurrency, only=only, trials=args.trials)
+    return code
 
 
 if __name__ == "__main__":
