@@ -52,11 +52,41 @@ def fake_cli(instance=live.LIVE_INSTANCE, ws_id=2, ws_name="pmf", auth_canon=liv
 
 
 class FakeMeta:
-    """In-memory Metadata API (workspace 2) with request log."""
+    """In-memory Metadata API (workspace 2) following the documented page shape, with request log.
 
-    def __init__(self, rows=None):
+    `faults` lets tests corrupt replies: a callable (method, path, query, status, body) -> (status, body).
+    `delete_status` is the status returned by DELETE (the row is removed for 200/204 unless `sticky`).
+    """
+
+    def __init__(self, rows=None, faults=None, delete_status=200, sticky=()):
         self.rows = {name: [dict(r) for r in (rows or {}).get(name, [])] for name in TABLE_IDS}
         self.log = []
+        self.faults = faults
+        self.delete_status = delete_status
+        self.sticky = set(sticky)
+
+    @staticmethod
+    def page(items, page, per):
+        chunk = items[(page - 1) * per: page * per]
+        nxt = page + 1 if page * per < len(items) else None
+        return {"items": chunk, "itemsReceived": len(chunk), "curPage": page, "nextPage": nxt,
+                "prevPage": page - 1 or None, "offset": (page - 1) * per, "perPage": per, "itemsTotal": len(items)}
+
+    def respond(self, method, path, q):
+        segs = path.strip("/").split("/")
+        page, per = int(q.get("page", 1)), int(q.get("per_page", 50))
+        if len(segs) == 3:
+            return 200, self.page([{"id": i, "name": n} for n, i in TABLE_IDS.items()], page, per)
+        name = next(n for n, i in TABLE_IDS.items() if i == int(segs[3]))
+        if len(segs) == 6:
+            row_id = int(segs[5])
+            exists = any(r["id"] == row_id for r in self.rows[name])
+            if method == "DELETE":
+                if self.delete_status in (200, 204) and name not in self.sticky:
+                    self.rows[name] = [r for r in self.rows[name] if r["id"] != row_id]
+                return self.delete_status, (None if self.delete_status == 204 else {})
+            return (200, {"id": row_id}) if exists else (404, {"message": "not found"})
+        return 200, self.page(self.rows[name], page, per)
 
     def __call__(self, method, url, headers, data):
         parts = urllib.parse.urlsplit(url)
@@ -64,17 +94,11 @@ class FakeMeta:
         q = dict(urllib.parse.parse_qsl(parts.query))
         path = parts.path[len("/api:meta"):]
         self.log.append((method, path))
-        segs = path.strip("/").split("/")
-        if len(segs) == 3:
-            return 200, json.dumps({"items": [{"id": i, "name": n} for n, i in TABLE_IDS.items()]}).encode()
-        name = next(n for n, i in TABLE_IDS.items() if i == int(segs[3]))
-        if method == "DELETE":
-            self.rows[name] = [r for r in self.rows[name] if r["id"] != int(segs[5])]
-            return 200, b"{}"
-        page, per = int(q.get("page", 1)), int(q.get("per_page", 50))
-        items = self.rows[name][(page - 1) * per: page * per]
-        nxt = page + 1 if page * per < len(self.rows[name]) else None
-        return 200, json.dumps({"items": items, "itemsTotal": len(self.rows[name]), "nextPage": nxt}).encode()
+        status, body = self.respond(method, path, q)
+        if self.faults:
+            status, body = self.faults(method, path, q, status, body)
+        raw = b"" if body is None else (body if isinstance(body, bytes) else json.dumps(body).encode())
+        return status, raw
 
 
 def synthetic_rows():
@@ -139,7 +163,7 @@ class MetaGuard(unittest.TestCase):
         for method, path in (("GET", "/workspace/1/table"), ("GET", "/workspace"), ("DELETE", "/workspace/2/table/10"),
                              ("PUT", "/workspace/2/table/10/content/1"), ("GET", "/workspace/2/table/10/truncate")):
             with self.assertRaises(UnsafeEnvironment):
-                meta._call(method, path)
+                meta._request(method, path)
 
     def test_deletes_need_explicit_table_permission(self):
         fake = FakeMeta(synthetic_rows())
@@ -159,6 +183,127 @@ class MetaGuard(unittest.TestCase):
         meta.resolve_tables()
         self.assertEqual(len(meta.rows("customers")), 1200)
         self.assertEqual(meta.counts()["customers"], 1200)
+
+
+class MetaFailClosed(unittest.TestCase):
+    """Malformed, contradictory or incomplete Metadata API replies must stop testing and cleanup."""
+
+    def client(self, fault, rows=None):
+        meta = live.MetaClient("t", FakeMeta(rows if rows is not None else synthetic_rows(), faults=fault))
+        return meta
+
+    def content_fault(self, mutate):
+        def fault(method, path, q, status, body):
+            if method == "GET" and path.endswith("/content") and isinstance(body, dict):
+                body = dict(body)
+                mutate(body, q)
+            return status, body
+        return fault
+
+    def assert_stops(self, call):
+        with self.assertRaises(UnsafeEnvironment):
+            call()
+
+    def test_count_requires_valid_items_total(self):
+        for mutate in (lambda b, q: b.pop("itemsTotal"), lambda b, q: b.update(itemsTotal=None),
+                       lambda b, q: b.update(itemsTotal="3"), lambda b, q: b.update(itemsTotal=-1),
+                       lambda b, q: b.update(itemsTotal=True), lambda b, q: b.update(itemsTotal=1.5)):
+            meta = self.client(self.content_fault(mutate))
+            meta.resolve_tables()
+            self.assert_stops(lambda: meta.count("products"))
+            self.assert_stops(meta.counts)
+
+    def test_count_rejects_contradictions(self):
+        cases = [
+            lambda b, q: b.update(itemsTotal=0),                       # rows returned but total 0
+            lambda b, q: b.update(items=[]),                           # total > 0 but no rows
+            lambda b, q: b.update(nextPage=None, itemsTotal=5),        # more pages implied but none offered
+        ]
+        for mutate in cases:
+            meta = self.client(self.content_fault(mutate))
+            meta.resolve_tables()
+            self.assert_stops(lambda: meta.count("products"))
+
+    def test_rows_reject_malformed_items(self):
+        for mutate in (lambda b, q: b.pop("items"), lambda b, q: b.update(items={}), lambda b, q: b.update(items=["x"]),
+                       lambda b, q: b.update(items=[{"name": "no id"}]), lambda b, q: b.update(items=[{"id": "1"}])):
+            meta = self.client(self.content_fault(mutate))
+            meta.resolve_tables()
+            self.assert_stops(lambda: meta.rows("products"))
+
+    def test_rows_reject_incomplete_or_inconsistent_pagination(self):
+        rows = synthetic_rows()
+        rows["customers"] = [{"id": i, "product_id": 1, "name": None, "email": None} for i in range(1, 1201)]
+        cases = [
+            lambda b, q: b.update(nextPage=None) if q.get("page") == "1" else None,            # stops early
+            lambda b, q: b.update(itemsTotal=1300) if q.get("page") == "2" else None,          # total changes
+            lambda b, q: b.update(items=b["items"][:-1]) if q.get("page") == "3" else None,    # short page
+            lambda b, q: b.update(items=b["items"] + b["items"][:1]) if q.get("page") == "2" else None,  # oversized
+            lambda b, q: b.update(nextPage=5) if q.get("page") == "1" else None,               # skips pages
+        ]
+        for mutate in cases:
+            meta = self.client(self.content_fault(mutate), rows)
+            meta.resolve_tables()
+            self.assert_stops(lambda: meta.rows("customers"))
+
+    def test_rows_reject_duplicate_ids(self):
+        rows = synthetic_rows()
+        rows["customers"] = [{"id": 1, "product_id": 1}, {"id": 1, "product_id": 1}]
+        meta = self.client(None, rows)
+        meta.resolve_tables()
+        self.assert_stops(lambda: meta.rows("customers"))
+
+    def test_non_json_and_non_200_stop(self):
+        for fault in (lambda m, p, q, st, b: (st, b"<html>") if p.endswith("/content") else (st, b),
+                      lambda m, p, q, st, b: (500, b) if p.endswith("/content") else (st, b),
+                      lambda m, p, q, st, b: (302, b) if p.endswith("/content") else (st, b)):
+            meta = self.client(fault)
+            meta.resolve_tables()
+            self.assert_stops(lambda: meta.count("products"))
+
+    def test_table_listing_must_be_complete_and_well_formed(self):
+        for fault in (lambda m, p, q, st, b: (st, {"items": b["items"]}) if p.endswith("/table") else (st, b),
+                      lambda m, p, q, st, b: (st, b["items"]) if p.endswith("/table") else (st, b),
+                      lambda m, p, q, st, b: (st, dict(b, itemsTotal=b["itemsTotal"] + 1)) if p.endswith("/table") else (st, b)):
+            meta = self.client(fault)
+            self.assert_stops(meta.resolve_tables)
+
+    def test_delete_requires_confirmed_absence(self):
+        for status in (200, 204):
+            fake = FakeMeta(synthetic_rows(), delete_status=status)
+            meta = live.MetaClient("t", fake)
+            meta.resolve_tables()
+            meta.deletable_tables = {meta.table_ids["products"]}
+            self.assertTrue(meta.delete("products", 1))
+            self.assertEqual(fake.log[-2:], [("DELETE", f"/workspace/2/table/{TABLE_IDS['products']}/content/1"),
+                                             ("GET", f"/workspace/2/table/{TABLE_IDS['products']}/content/1")])
+        for kwargs in (dict(delete_status=202), dict(delete_status=500), dict(delete_status=404), dict(sticky={"products"})):
+            fake = FakeMeta(synthetic_rows(), **kwargs)
+            meta = live.MetaClient("t", fake)
+            meta.resolve_tables()
+            meta.deletable_tables = {meta.table_ids["products"]}
+            self.assert_stops(lambda: meta.delete("products", 1))
+
+    def test_single_record_reads_need_delete_permission(self):
+        meta = live.MetaClient("t", FakeMeta(synthetic_rows()))
+        meta.resolve_tables()
+        self.assert_stops(lambda: meta._request("GET", f"/workspace/2/table/{TABLE_IDS['user']}/content/7"))
+
+    def test_cleanup_stops_on_malformed_counts_without_deleting(self):
+        fake = FakeMeta(synthetic_rows(), faults=self.content_fault(lambda b, q: b.pop("itemsTotal")))
+        lines = []
+        code = cleanup_live.run_cleanup(ENV, live.CLEANUP_PHRASE, execute=True, cli_runner=fake_cli(),
+                                        meta=live.MetaClient("t", fake), transport=fake, out=lines.append)
+        self.assertEqual(code, 2)
+        self.assertFalse(any(m == "DELETE" for m, _ in fake.log))
+
+    def test_live_runner_stops_on_malformed_counts(self):
+        fake = FakeMeta({}, faults=self.content_fault(lambda b, q: b.update(itemsTotal="0")))
+        calls = []
+        code, _ = suite_module.run_suite(ENV, target="live-pmf", confirm_live=live.CONFIRM_PHRASE,
+                                         transport=lambda *a: calls.append(a), cli_runner=fake_cli(),
+                                         meta_client=live.MetaClient("t", fake), out=lambda *_: None)
+        self.assertEqual((code, calls), (2, []))
 
 
 class SyntheticVerification(unittest.TestCase):
@@ -357,47 +502,112 @@ class Cleanup(unittest.TestCase):
             self.assertEqual(code, 2)
             self.assertFalse(any(m == "DELETE" for m, _ in meta.log))
 
-    def test_reports_incomplete_when_tables_not_empty(self):
-        class StickyProducts(FakeMeta):
-            def __call__(self, method, url, headers, data):
-                if method == "DELETE" and f"/table/{TABLE_IDS['products']}/" in url:
-                    self.log.append((method, url))
-                    return 200, b"{}"  # server claims success but the row remains
-                return super().__call__(method, url, headers, data)
-
-        meta = StickyProducts(synthetic_rows())
+    def test_reports_incomplete_when_a_delete_is_not_confirmed(self):
+        meta = FakeMeta(synthetic_rows(), sticky={"products"})  # server claims success but the row remains
         code, lines = self.do_cleanup(meta, execute=True)
         self.assertEqual(code, 4)
         self.assertTrue(lines[-1].startswith("INCOMPLETE"))
 
+    def test_stops_if_contents_change_after_verification(self):
+        meta = FakeMeta(synthetic_rows())
+        original = live.MetaClient.counts
+
+        def counts(self_):
+            result = original(self_)
+            result["customers"] += 1
+            return result
+
+        live.MetaClient.counts = counts
+        self.addCleanup(setattr, live.MetaClient, "counts", original)
+        code, lines = self.do_cleanup(meta, execute=True)
+        self.assertEqual(code, 2)
+        self.assertFalse(any(m == "DELETE" for m, _ in meta.log))
+
 
 class DeploymentChecks(unittest.TestCase):
-    def preview(self, lines):
-        return "=== Push Preview: workspace 2 ===\n\n--- Changes ---\n\n" + "\n".join(lines) + "\n"
+    INV = check_dry_run.expected_inventory()
 
-    def good_lines(self):
-        return ["  CREATE           api_group          PMF App"] + \
-               [f"  CREATE           query              route{i}" for i in range(48)] + \
-               [f"  CREATE           function           pmf/f{i}" for i in range(34)]
+    def preview(self, workspace="2", host=live.LIVE_HOST, ws_name="pmf", verbs=True, extra=(), drop=0,
+                summary=True, changes_header=True, mutate=None):
+        lines = ["  CREATE           api_group          PMF App"]
+        lines += [f"  CREATE           query              {v} {r}" if verbs else f"  CREATE           query              {r}"
+                  for v, r in self.INV["query"]]
+        lines += [f"  CREATE           function           {f}" for f in self.INV["function"]]
+        lines = lines[:len(lines) - drop] + list(extra)
+        if mutate:
+            lines = mutate(lines)
+        head = [f"=== Push Preview: workspace {workspace} ===", f"  instance: {host}  |  workspace: {ws_name}  |  cli: v1.3.4", ""]
+        if summary:
+            head += [f"  API Groups           +1 created", f"  Queries              +48 created", f"  Functions            +34 created", ""]
+        return "\n".join(head + (["--- Changes ---", ""] if changes_header else []) + lines) + "\n"
 
-    def test_expected_objects_from_sources(self):
+    def status(self, text, cli_exit=0):
+        return check_dry_run.check(text, self.INV, cli_exit)[0]
+
+    def test_inventory_from_sources(self):
         self.assertEqual(check_dry_run.expected_objects(), {"api_group": 1, "query": 48, "function": 34})
+        self.assertEqual(self.INV["api_group"], [("PMF App", "pmf-app")])
 
-    def test_good_preview_passes(self):
-        problems, by_type, unknown = check_dry_run.check(self.preview(self.good_lines()), check_dry_run.expected_objects())
-        self.assertEqual((problems, unknown), ([], {}))
+    def test_exact_preview_passes(self):
+        self.assertEqual(self.status(self.preview()), 0)
+        self.assertEqual(self.status(self.preview(summary=False)), 0)
 
-    def test_bad_previews_fail(self):
-        expected = check_dry_run.expected_objects()
-        variants = [
-            self.good_lines() + ["  UPDATE           table              customers"],
-            self.good_lines()[:-1],
-            self.good_lines() + ["  CREATE           query              auth/signup"],
-            [line.replace("CREATE", "DELETE", 1) if i == 3 else line for i, line in enumerate(self.good_lines())],
-        ]
-        for lines in variants:
-            problems, _, _ = check_dry_run.check(self.preview(lines), expected)
-            self.assertTrue(problems)
+    def test_verbless_preview_requires_human_review(self):
+        status, problems, notes = check_dry_run.check(self.preview(verbs=False), self.INV, 0)
+        self.assertEqual((status, problems), (3, []))
+        self.assertTrue(notes)
+
+    def test_negative_controls(self):
+        q0 = self.INV["query"][0]
+        fails = {
+            "cli exit nonzero": (self.preview(), 1),
+            "wrong workspace id": (self.preview(workspace="1"), 0),
+            "wrong instance": (self.preview(host="other.xano.io"), 0),
+            "wrong workspace name": (self.preview(ws_name="goodz"), 0),
+            "missing header": (self.preview().replace("=== Push Preview: workspace 2 ===\n", ""), 0),
+            "missing identity": ("\n".join(l for l in self.preview().splitlines() if "instance:" not in l), 0),
+            "missing changes section": (self.preview(changes_header=False), 0),
+            "empty output": ("", 0),
+            "truncated output": (self.preview(drop=5), 0),
+            "truncated output without summary": (self.preview(drop=5, summary=False), 0),
+            "verbless truncated without summary": (self.preview(verbs=False, drop=40, summary=False), 0),
+            "update op": (self.preview(extra=["  UPDATE           function           pmf/auth/require_owner"]), 0),
+            "delete op": (self.preview(extra=["  DELETE           query              GET auth/me"]), 0),
+            "table change": (self.preview(extra=["  CREATE           table              notes"]), 0),
+            "auth endpoint": (self.preview(extra=["  CREATE           query              POST auth/signup"]), 0),
+            "auth group": (self.preview(mutate=lambda ls: ["  CREATE           api_group          Authentication"] + ls[1:]), 0),
+            "unknown type": (self.preview(extra=["  CREATE           middleware         pmf/x"]), 0),
+            "renamed function": (self.preview(mutate=lambda ls: [l.replace("pmf/lock/wave", "pmf/lock/wav") for l in ls]), 0),
+            "extra function": (self.preview(extra=["  CREATE           function           pmf/extra"]), 0),
+            "wrong group": (self.preview(mutate=lambda ls: ["  CREATE           api_group          Other App"] + ls[1:]), 0),
+            "duplicate group": (self.preview(extra=["  CREATE           api_group          PMF App"]), 0),
+            "verb swapped": (self.preview(mutate=lambda ls: [l.replace(f"{q0[0]} {q0[1]}", f"PUT {q0[1]}", 1) for l in ls]), 0),
+            "extra endpoint": (self.preview(extra=["  CREATE           query              GET admin/export"]), 0),
+            "verbless missing route": (self.preview(verbs=False, drop=35), 0),
+            "unparseable line": (self.preview(extra=["  something unexpected happened"]), 0),
+            "push blocked": (self.preview(extra=[""]) + "Push blocked: 1 critical error(s) found.\n", 0),
+            "summary mismatch": (self.preview().replace("+48 created", "+47 created"), 0),
+            "summary non-create": (self.preview().replace("+34 created", "+33 created, ~1 updated"), 0),
+        }
+        for label, (text, code) in fails.items():
+            with self.subTest(label):
+                self.assertEqual(self.status(text, code), 1, label)
+
+    def test_cli_requires_exit_status(self):
+        with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as fh:
+            fh.write(self.preview())
+        argv = sys.argv
+        try:
+            sys.argv = ["check_dry_run.py", fh.name, "--cli-exit", "0"]
+            self.assertEqual(check_dry_run.main(), 0)
+            sys.argv = ["check_dry_run.py", fh.name, "--cli-exit", "2"]
+            self.assertEqual(check_dry_run.main(), 1)
+            sys.argv = ["check_dry_run.py", fh.name]
+            with self.assertRaises(SystemExit):
+                check_dry_run.main()
+        finally:
+            sys.argv = argv
+            pathlib.Path(fh.name).unlink()
 
     def test_readback_comparator(self):
         with tempfile.TemporaryDirectory() as tmp:

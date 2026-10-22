@@ -8,7 +8,7 @@ Specification: `docs/API_V1_PROPOSAL.md` (branch `docs/api-v1-design`, Appendix 
 | XanoScript syntax (all sources) | `XANO_DEV_MCP_LIB=<path>/@xano/developer-mcp/dist/lib.js node tests/static/validate_xs.mjs xano/app xano/market xano/research xano/intelligence_validation` |
 | Project rules (inventory, owner guard, loaders, routes, fields, sensitive inputs, mass-assignment, error codes, pagination, forbidden constructs, ambiguous filter chains) | `python3 -I tests/static/xs_api_lint.py .` |
 | Harness: preflight, guarded client, S01/S02 gate, concurrency gate, inventory consistency, PMF reference values, live-workspace mode, cleanup, deployment checkers | `python3 -m unittest discover -s tests/api -p 'test_offline*.py'` |
-| Deployment preview / read-back (after a dry run or push) | `python3 -I tests/static/check_dry_run.py <preview.txt>` · `python3 -I tests/static/compare_readback.py <after> --baseline <before>` |
+| Deployment preview / read-back (after a dry run or push) | `python3 -I tests/static/check_dry_run.py <preview.txt> --cli-exit <status>` (0 verified · 3 human review · 1 fail; capture with `set -o pipefail`) · `python3 -I tests/static/compare_readback.py <after> --baseline <before>` |
 
 XanoScript unit tests are inline `test "…"` blocks in the pure functions under `xano/app/function/pmf/{text,util,survey,report,insight,validation}`; they run server-side (`xano unit_test run_all`) — **only in the isolated tenant**.
 
@@ -51,6 +51,7 @@ python3 tests/api/pmf_api_tests.py --confirm-tenant <tenant-name> --trials 25
 
 ## Live-workspace mode (`--target live-pmf`)
 Fixed target (`tests/api/live_target.py`): host `xgjc-aodb-3a7q.n7e.xano.io`, business base exactly `/api:pmf-app`, auth base exactly `/api:xHMmrw_d`, Metadata API paths pinned to `/workspace/2/table…`, CLI calls pinned to `-p pmf -w 2`. Goodz cannot be addressed.
+Metadata API replies are validated fail-closed (`live_target.MetaClient`): HTTP 200 only for reads; integer `itemsTotal` ≥ 0; list `items` of objects with integer ids; page sizes and `nextPage` consistent with `itemsTotal`; no duplicate ids; fetched rows must equal `itemsTotal`. Deletes accept 200/204 only when a follow-up read returns 404.
 Preflight (exit 2, before any API request): confirmation phrase; exact URLs; `PMF_TEST_OWNER_ID`, `PMF_XANO_META_TOKEN`, distinct owner/intruder tokens; CLI profile `pmf` → instance `xgjc-aodb-3a7q`, workspace 2 = `pmf`; read-only pull shows `PMF App` = `pmf-app` and `Authentication` = `xHMmrw_d`; **all ten business tables contain zero rows** (Metadata API counts; the `user` table is never read).
 Canary: owner `auth/me` id equals `PMF_TEST_OWNER_ID` (the real designated owner); the non-owner is a distinct `@pmf-test.invalid` account created for the test; the owner has no products.
 Gate: S01/S02 as before; then the ten tables are re-counted and must still be empty before the fixture (a sweep must not have written anything).

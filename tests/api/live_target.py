@@ -111,9 +111,17 @@ def verify_canonicals(runner=subprocess.run, require_business=True):
 
 
 class MetaClient:
-    """Metadata API client pinned to workspace 2 table/content paths. DELETE only on approved table ids."""
+    """Metadata API client pinned to workspace 2 table/content paths. Fails closed on any malformed reply.
+
+    - GET list/content: HTTP 200 with a well-formed page (integer itemsTotal >= 0, list `items` of objects
+      with integer ids, consistent nextPage) or the call stops.
+    - DELETE content/{id}: only on explicitly permitted table ids. Xano documents 200 for success; 204 is
+      not documented, so neither status is trusted on its own: every delete is confirmed by a follow-up
+      GET content/{id} that must return 404. Any other outcome stops.
+    """
 
     PATH_RE = re.compile(rf"^/workspace/{WORKSPACE_ID}/table(?:/(\d+)/content(?:/(\d+))?)?$")
+    DELETE_OK = (200, 204)
 
     def __init__(self, token, transport):
         self.token = token
@@ -121,7 +129,7 @@ class MetaClient:
         self.table_ids = {}
         self.deletable_tables = set()
 
-    def _call(self, method, path, params=None):
+    def _request(self, method, path, params=None):
         m = self.PATH_RE.match(path)
         if not m:
             raise UnsafeEnvironment(f"metadata path refused: {path}")
@@ -129,34 +137,94 @@ class MetaClient:
         if method == "DELETE":
             if not row_id or int(table_id) not in self.deletable_tables:
                 raise UnsafeEnvironment(f"metadata delete refused: {path}")
-        elif method != "GET" or row_id:
+        elif method != "GET":
             raise UnsafeEnvironment(f"metadata {method} refused: {path}")
+        elif row_id and int(table_id) not in self.deletable_tables:
+            raise UnsafeEnvironment(f"metadata single-record read refused: {path}")
         url = META_URL + path
         if params:
             url += "?" + urllib.parse.urlencode(params)
         headers = {"Authorization": f"Bearer {self.token}", "Accept": "application/json", "x-data-source": "live"}
-        status, raw = self.transport(method, url, headers, None)
+        return self.transport(method, url, headers, None)
+
+    @staticmethod
+    def _json(raw, path):
+        try:
+            return json.loads((raw or b"").decode())
+        except (ValueError, UnicodeDecodeError):
+            raise UnsafeEnvironment(f"metadata {path} returned malformed JSON") from None
+
+    def _get_json(self, path, params=None):
+        status, raw = self._request("GET", path, params)
         if status != 200:
-            raise UnsafeEnvironment(f"metadata {method} {path} returned {status}")
-        return json.loads((raw or b"null").decode() or "null")
+            raise UnsafeEnvironment(f"metadata GET {path} returned {status}")
+        return self._json(raw, path)
+
+    @staticmethod
+    def _page(data, path, page, per_page):
+        """Validate one paginated reply; returns (items, total)."""
+        if not isinstance(data, dict):
+            raise UnsafeEnvironment(f"metadata {path}: page is not an object")
+        total = data.get("itemsTotal")
+        if isinstance(total, bool) or not isinstance(total, int) or total < 0:
+            raise UnsafeEnvironment(f"metadata {path}: missing or invalid itemsTotal")
+        items = data.get("items")
+        if not isinstance(items, list) or not all(isinstance(r, dict) for r in items):
+            raise UnsafeEnvironment(f"metadata {path}: missing or malformed items")
+        for r in items:
+            if isinstance(r.get("id"), bool) or not isinstance(r.get("id"), int):
+                raise UnsafeEnvironment(f"metadata {path}: row without an integer id")
+        if len(items) > per_page:
+            raise UnsafeEnvironment(f"metadata {path}: page larger than requested")
+        expected_here = max(0, min(per_page, total - (page - 1) * per_page))
+        if len(items) != expected_here:
+            raise UnsafeEnvironment(f"metadata {path}: page {page} has {len(items)} rows, totals imply {expected_here}")
+        has_more = page * per_page < total
+        nxt = data.get("nextPage")
+        if (has_more and nxt != page + 1) or (not has_more and nxt is not None):
+            raise UnsafeEnvironment(f"metadata {path}: nextPage {nxt!r} contradicts itemsTotal {total}")
+        return items, total
+
+    def _all(self, path, per_page=500):
+        rows, seen, page, total = [], set(), 1, None
+        while True:
+            items, page_total = self._page(self._get_json(path, {"page": page, "per_page": per_page}), path, page, per_page)
+            if total is None:
+                total = page_total
+            elif page_total != total:
+                raise UnsafeEnvironment(f"metadata {path}: itemsTotal changed during pagination")
+            for r in items:
+                if r["id"] in seen:
+                    raise UnsafeEnvironment(f"metadata {path}: duplicate row id {r['id']}")
+                seen.add(r["id"])
+            rows.extend(items)
+            if page * per_page >= total:
+                break
+            page += 1
+        if len(rows) != total:
+            raise UnsafeEnvironment(f"metadata {path}: fetched {len(rows)} rows but itemsTotal is {total}")
+        return rows
 
     def resolve_tables(self):
-        listing = self._call("GET", f"/workspace/{WORKSPACE_ID}/table", {"page": 1, "per_page": 500})
-        items = listing.get("items", listing) if isinstance(listing, dict) else listing
+        tables = self._all(f"/workspace/{WORKSPACE_ID}/table")
         found = {}
-        for t in items:
-            found.setdefault(t.get("name"), []).append(t.get("id"))
+        for t in tables:
+            found.setdefault(t.get("name"), []).append(t["id"])
         for name in BUSINESS_TABLES + ["user"]:
             if len(found.get(name, [])) != 1:
                 raise UnsafeEnvironment(f"table `{name}` not found exactly once in workspace 2")
             self.table_ids[name] = found[name][0]
         return dict(self.table_ids)
 
+    def _content_path(self, name):
+        return f"/workspace/{WORKSPACE_ID}/table/{self.table_ids[name]}/content"
+
     def count(self, name):
         if name not in BUSINESS_TABLES:
             raise UnsafeEnvironment(f"row counts are limited to business tables (got {name})")
-        page = self._call("GET", f"/workspace/{WORKSPACE_ID}/table/{self.table_ids[name]}/content", {"page": 1, "per_page": 1})
-        return int(page.get("itemsTotal", 0))
+        path = self._content_path(name)
+        _, total = self._page(self._get_json(path, {"page": 1, "per_page": 1}), path, 1, 1)
+        return total
 
     def counts(self):
         return {name: self.count(name) for name in BUSINESS_TABLES}
@@ -164,17 +232,18 @@ class MetaClient:
     def rows(self, name):
         if name not in BUSINESS_TABLES:
             raise UnsafeEnvironment(f"row reads are limited to business tables (got {name})")
-        out, page = [], 1
-        while True:
-            data = self._call("GET", f"/workspace/{WORKSPACE_ID}/table/{self.table_ids[name]}/content", {"page": page, "per_page": 500})
-            items = data.get("items") or []
-            out.extend(items if isinstance(items, list) else [])
-            if not data.get("nextPage"):
-                return out
-            page = data["nextPage"]
+        return self._all(self._content_path(name))
 
     def delete(self, name, row_id):
-        return self._call("DELETE", f"/workspace/{WORKSPACE_ID}/table/{self.table_ids[name]}/content/{int(row_id)}")
+        """Delete one permitted row and prove it is gone (follow-up GET must be 404)."""
+        path = f"{self._content_path(name)}/{int(row_id)}"
+        status, _ = self._request("DELETE", path)
+        if status not in self.DELETE_OK:
+            raise UnsafeEnvironment(f"metadata DELETE {path} returned {status}; deletion not confirmed")
+        check, _ = self._request("GET", path)  # body intentionally ignored (may be a user row)
+        if check != 404:
+            raise UnsafeEnvironment(f"row {name}#{row_id} still readable after DELETE (status {check})")
+        return True
 
 
 def verify_synthetic(rows, owner_id):

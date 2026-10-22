@@ -9,7 +9,9 @@ Procedure:
   3. Verify ALL rows are synthetic: every product starts with SYNTH- and belongs to PMF_TEST_OWNER_ID,
      every other row chains to those products, customer emails/names are synthetic. Any doubt → STOP.
   4. Optional --ledger: report rows that this run's ledger did not record (still synthetic, from older runs).
-  5. --execute: delete the verified row ids table by table, children first (never truncate).
+  5. --execute: re-count all ten tables (must equal the verified plan, else STOP), then delete the verified
+     row ids table by table, children first (never truncate). Each DELETE must return 200/204 AND a
+     follow-up read must return 404; anything else stops with exit 4.
   6. --remove-test-user: delete exactly one `user` row — the id returned by the intruder token's auth/me,
      only if its email ends with @pmf-test.invalid and it is not PMF_TEST_OWNER_ID.
   7. Verify the ten business tables contain zero rows.
@@ -87,18 +89,37 @@ def run_cleanup(env, confirm, *, execute=False, remove_test_user=False, ledger_p
         out("DRY RUN: nothing deleted (add --execute to delete exactly these rows)")
         return 0
 
-    for name in live.BUSINESS_TABLES:
-        meta.deletable_tables = {meta.table_ids[name]}
-        for row_id in plan[name]:
-            meta.delete(name, row_id)
-        out(f"deleted {len(plan[name])} {name}")
-    if test_user is not None:
-        meta.deletable_tables = {meta.table_ids["user"]}
-        meta.delete("user", test_user)
-        out(f"deleted test user {test_user}")
-    meta.deletable_tables = set()
+    try:
+        recount = meta.counts()
+    except UnsafeEnvironment as exc:
+        out(f"STOP: {exc}; nothing deleted")
+        return 2
+    changed = {t: (len(plan[t]), recount[t]) for t in live.BUSINESS_TABLES if recount[t] != len(plan[t])}
+    if changed:
+        out(f"STOP: table contents changed since verification {changed}; nothing deleted")
+        return 2
 
-    counts = meta.counts()
+    try:
+        for name in live.BUSINESS_TABLES:
+            meta.deletable_tables = {meta.table_ids[name]}
+            for row_id in plan[name]:
+                meta.delete(name, row_id)  # confirmed by a follow-up 404
+            out(f"deleted {len(plan[name])} {name}")
+        if test_user is not None:
+            meta.deletable_tables = {meta.table_ids["user"]}
+            meta.delete("user", test_user)
+            out(f"deleted test user {test_user}")
+    except UnsafeEnvironment as exc:
+        out(f"INCOMPLETE: deletion stopped: {exc}. Rerun the dry run before anything else; never truncate.")
+        return 4
+    finally:
+        meta.deletable_tables = set()
+
+    try:
+        counts = meta.counts()
+    except UnsafeEnvironment as exc:
+        out(f"INCOMPLETE: final verification failed: {exc}")
+        return 4
     remaining = {k: v for k, v in counts.items() if v}
     if remaining:
         out(f"INCOMPLETE: business tables not empty after cleanup: {remaining} (investigate; do not truncate)")

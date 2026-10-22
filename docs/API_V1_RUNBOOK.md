@@ -23,10 +23,16 @@ Owner confirms in the Xano UI: `auth/signup` External Access OFF; the ten busine
 Owner enables Workspace Settings → CLI → Allow Direct Workspace Push for `pmf` only, then:
 ```
 xano workspace get -p pmf -w 2 -o json                 # confirm allow_push true
-xano workspace push -p pmf -w 2 -b v1 -d ./xano/app --dry-run | tee /tmp/pmf-dry-run.txt
-python3 -I tests/static/check_dry_run.py /tmp/pmf-dry-run.txt
+set -o pipefail                                        # keep the CLI's exit status through tee (bash and zsh)
+xano workspace push -p pmf -w 2 -b v1 -d ./xano/app --dry-run 2>&1 | tee /tmp/pmf-dry-run.txt
+DRY_RUN_EXIT=$?
+python3 -I tests/static/check_dry_run.py /tmp/pmf-dry-run.txt --cli-exit "$DRY_RUN_EXIT"
 ```
-Accept only: CREATE-only; 1 API group + 48 endpoints + 34 functions (83); zero table, auth or other changes. Any difference → stop, disable push.
+(Without a pipe: `xano … --dry-run > /tmp/pmf-dry-run.txt 2>&1; DRY_RUN_EXIT=$?`.)
+The checker requires the preview header for workspace 2, the identity line `xgjc-aodb-3a7q.n7e.xano.io | pmf`, a complete changes section, CREATE-only lines of known types, no table/auth objects, and the exact inventory: `PMF App` (pmf-app), the 34 local function names and the 48 local (verb, route) endpoints.
+- exit 0: exact inventory verified → may proceed to the separately approved push.
+- exit 3: structure and counts match but the preview does not show HTTP verbs, so individual endpoints cannot be uniquely identified → **explicit human review** of `/tmp/pmf-dry-run.txt` against `docs/API_V1_PROPOSAL.md` R8.3 is required; do not treat as verified.
+- exit 1: anything else (including unknown type labels, which require a deliberate checker update after review) → stop, disable push.
 
 ## 3. Real push (separate approval; owner runs it interactively)
 ```
@@ -65,11 +71,12 @@ python3 tests/api/cleanup_live.py --confirm-cleanup delete-synthetic:xgjc-aodb-3
 python3 tests/api/cleanup_live.py --confirm-cleanup delete-synthetic:xgjc-aodb-3a7q:workspace-2 \
   --ledger ~/.pmf-test-runs/run-<tag>.jsonl --execute --remove-test-user
 ```
-Cleanup reads all rows of the ten business tables, STOPS without deleting if any row is not provably synthetic (SYNTH- product of the owner, every child chained to it, synthetic customer names/emails), deletes the verified ids children-first, removes only the synthetic test user identified by its own `auth/me` (never the owner, never truncate), then verifies all ten tables have zero rows (exit 4 otherwise).
+Cleanup reads all rows of the ten business tables (the Metadata API reply must be well-formed: integer `itemsTotal` ≥ 0, list `items` with integer ids, complete and consistent pagination, fetched rows = `itemsTotal`; otherwise STOP), STOPS without deleting if any row is not provably synthetic (SYNTH- product of the owner, every child chained to it, synthetic customer names/emails), re-counts all ten tables immediately before deleting (any change since verification → STOP), deletes the verified ids children-first — each DELETE must return 200 (documented) or 204 (tolerated) **and** a follow-up read of that record must return 404, otherwise it stops with exit 4 — removes only the synthetic test user identified by its own `auth/me` (never the owner, never truncate), then verifies all ten tables have zero rows (exit 4 otherwise).
 
 ## 6. Recovery after a partially failed run
 - Fixture or matrix failure, aborted run, or gate abort after sweeps: synthetic data may remain. Do not hand-delete. Run the cleanup dry run; if it reports STOP, inspect the listed rows in the UI before anything else.
 - `require_empty` failure before testing: real or leftover data exists — do not run tests or cleanup until the owner explains it.
-- Cleanup exit 4 (rows remain): rerun the dry run; never truncate; investigate rows that are not in the plan.
+- Cleanup exit 4 (a delete was not confirmed, or rows remain): deletion stopped at that row; rerun the dry run (it re-verifies everything); never truncate; investigate rows that are not in the plan.
+- Any STOP caused by a malformed or contradictory Metadata API reply: nothing was deleted; do not retry blindly — capture the status and report it.
 - Lost ledger: cleanup does not depend on it (it verifies every row); the ledger only reports which rows a run created.
 - Rollback of the deployment: set `active = false` in `xano/app/api/pmf_app/api_group.xs` and push it through the same dry-run/approval gate, or remove the group and functions in the UI. No table or auth change is involved.
