@@ -608,3 +608,105 @@ Original inventory: **52 new** endpoints (+3 existing auth). Proposed reductions
 5. Approve Git feature branch `feat/api-v1` for implementation sources.
 6. Owner sets live `PMF_OWNER_USER_ID` in the Xano UI before live deployment.
 7. Temporary live `allow_push` for the dry-run; separately approved interactive live push; push disabled and CLI-verified afterwards.
+
+---
+
+# Appendix R8 — Owner-Approved Design (2026-10-22, supersedes R2–R7 where different)
+
+## R8.1 Approved design rules
+| ID | Approved rule |
+|---|---|
+| U1 | Designated owner = workspace env var `PMF_OWNER_USER_ID` (set in the Xano UI from the owner's own `auth/me` id). Every business endpoint calls `pmf/auth/require_owner` first: unset/blank → 500 `OWNER_NOT_CONFIGURED`; mismatch → 403. `products.owner_user_id` is always server-set and checked by every access loader. Never in Git, never client-supplied. |
+| U2 | Isolated testing environment required before any write test (see R8.4); live `v1` is never used for write tests. |
+| U3 | One API group `PMF App`, canonical `pmf-app`. |
+| U4 | Interview raw text (`notes`, `transcript`, `existing_alternatives`, `problem_context`) and survey answers (`invited_at` excluded) are immutable once cited by any evidence row; a cited response cannot be cleared. |
+| U5 | Reviewed insight: `type`/`statement` edits revert to draft when no hypotheses exist, otherwise 400. |
+| U6 | Reviewed → draft blocked when hypotheses exist. |
+| U7 | Hypothesis transitions per R3.1; no automatic status changes. |
+| U8 | No product delete; deletes restricted when referenced; concluded experiments (conclusion or decision set) not deletable; participations deletable only when unanswered, uncited and wave open. |
+| U9 | `SMALL_SAMPLE` warning when the selected scope has **fewer than 30 valid responses**. Informational only; never a statistical claim, PMF threshold or score modifier. |
+| U10 | **Existing `auth/login`, `auth/me`, `auth/signup` are NOT modified.** Owner authorization is enforced on every business endpoint instead. The live dry-run must therefore show **zero UPDATEs**. |
+| U11 | `PMF App` group request history minimized (`history = 0`, runtime effect to verify); every input carrying interview, survey-answer or evidence text is `sensitive = true`. |
+| U12 | `page` default 1; `per_page` default 25, max 100. |
+| U13 | Parent-row locking (no-op self-update inside `db.transaction`) is **provisional**. It is accepted for critical invariants only after isolated concurrency tests C01–C04 pass; a failed strategy is not acceptable and blocks deployment. |
+| U14 | Historical timestamps allowed. `interviews.conducted_at` ≤ now + 5 minutes. Survey: `started_at ≤ responded_at ≤ now + 5 minutes` (clock-skew tolerance), `invited_at ≤ responded_at` when both set, actual historical response times preserved. `closed_at` optional on close: ≥ latest `responded_at`, ≤ now. |
+| Evidence | Survey evidence requires `source_field` ∈ {`beneficiary_description`, `main_benefit`, `improvement_request`}, non-blank on the cited row, and `responded_at` set. Interview evidence: `source_field` optional; when given ∈ {`notes`, `transcript`, `existing_alternatives`, `problem_context`} and non-blank; when omitted the interview must have at least one non-blank raw field. Evidence source ids are immutable. |
+| PATCH | Optional fields: omitted/null = unchanged. Nullable fields are cleared only via an explicit `clear: text[]` input listing field names (validated against an allow-list). Blank founder text normalizes to null. |
+
+## R8.2 Conditions still requiring verification (not approved as working)
+1. Isolated environment availability, entitlement and cost (ephemeral tenant preferred; sandbox only if unused by Goodz).
+2. `db.transaction` executes as one PostgreSQL transaction and the parent no-op update holds a row lock until commit (C01–C04).
+3. Runtime HTTP status for `inputerror`/`accessdenied`/`notfound`/`standard`; behavior of `throw` names.
+4. Unique-index violation behavior inside transactions (expected: transaction aborts; error surfaced).
+5. `history = 0` effect on request history; masking of `sensitive` inputs.
+6. Canonical `pmf-app` free at instance level (server dry-run).
+7. `$env` value type (string) and `|to_int` comparison.
+8. `output = [...]` projections on `db.query` honored at runtime.
+
+## R8.3 Final endpoint inventory (48)
+| # | Verb | Route |
+|---|---|---|
+| 1 | GET | `products` |
+| 2 | POST | `products` |
+| 3 | GET | `products/{product_id}` |
+| 4 | PATCH | `products/{product_id}` |
+| 5 | GET | `products/{product_id}/segments` |
+| 6 | POST | `products/{product_id}/segments` |
+| 7 | PATCH | `segments/{segment_id}` |
+| 8 | DELETE | `segments/{segment_id}` |
+| 9 | GET | `products/{product_id}/customers` |
+| 10 | POST | `products/{product_id}/customers` |
+| 11 | GET | `customers/{customer_id}` |
+| 12 | PATCH | `customers/{customer_id}` |
+| 13 | DELETE | `customers/{customer_id}` |
+| 14 | GET | `customers/{customer_id}/interviews` |
+| 15 | POST | `customers/{customer_id}/interviews` |
+| 16 | GET | `interviews/{interview_id}` |
+| 17 | PATCH | `interviews/{interview_id}` |
+| 18 | DELETE | `interviews/{interview_id}` |
+| 19 | GET | `products/{product_id}/survey-waves` |
+| 20 | POST | `products/{product_id}/survey-waves` |
+| 21 | GET | `survey-waves/{wave_id}` |
+| 22 | PATCH | `survey-waves/{wave_id}` |
+| 23 | DELETE | `survey-waves/{wave_id}` |
+| 24 | POST | `survey-waves/{wave_id}/status` (`action`: close/reopen) |
+| 25 | GET | `survey-waves/{wave_id}/participations` |
+| 26 | POST | `survey-waves/{wave_id}/participations` |
+| 27 | PATCH | `participations/{participation_id}` |
+| 28 | DELETE | `participations/{participation_id}` |
+| 29 | GET | `survey-waves/{wave_id}/report` |
+| 30 | GET | `products/{product_id}/insights` |
+| 31 | POST | `products/{product_id}/insights` |
+| 32 | GET | `insights/{insight_id}` |
+| 33 | PATCH | `insights/{insight_id}` |
+| 34 | DELETE | `insights/{insight_id}` |
+| 35 | POST | `insights/{insight_id}/review-status` |
+| 36 | POST | `insights/{insight_id}/evidence` |
+| 37 | PATCH | `evidence/{evidence_id}` |
+| 38 | DELETE | `evidence/{evidence_id}` |
+| 39 | GET | `products/{product_id}/hypotheses` |
+| 40 | POST | `insights/{insight_id}/hypotheses` |
+| 41 | GET | `hypotheses/{hypothesis_id}` |
+| 42 | PATCH | `hypotheses/{hypothesis_id}` |
+| 43 | DELETE | `hypotheses/{hypothesis_id}` |
+| 44 | POST | `hypotheses/{hypothesis_id}/experiments` |
+| 45 | PATCH | `experiments/{experiment_id}` |
+| 46 | DELETE | `experiments/{experiment_id}` |
+| 47 | GET | `products/{product_id}/overview` (includes `waves[]` PMF summaries) |
+| 48 | GET | `products/{product_id}/lookups` |
+Existing and unchanged: `POST auth/login`, `GET auth/me`, `POST auth/signup` (External Access off).
+
+## R8.4 Final shared-function inventory (34)
+`pmf/auth/require_owner`; `pmf/access/{product, segment, customer, interview, wave, participation, insight, evidence, hypothesis, experiment}`; `pmf/integrity/{segment_in_product, customer_in_product}`; `pmf/text/{normalize, is_blank}`; `pmf/util/patch_data`; `pmf/lock/{wave, insight}`; `pmf/survey/{wave_state, assert_wave_open, assert_definition_unlocked, validate_response, participation_status}`; `pmf/report/{count_wave, compute_pmf, comparability, build_wave_report}`; `pmf/evidence/{validate_source, source_summary}`; `pmf/insight/{count_valid_evidence, assert_reviewed}`; `pmf/validation/{validate_experiment, validate_hypothesis_status}`; `pmf/guard/count_references`.
+Change vs R5: `pmf/db/unique_error` replaced by `pmf/util/patch_data` (duplicates are pre-checked; index violations surface as transaction errors). `pmf/report/count_wave` is pure (aggregates rows already loaded by `build_wave_report`).
+
+## R8.5 Test safety protocol (mandatory before any write test)
+The HTTP test runner aborts unless **all** hold:
+1. `PMF_TEST_BASE_URL` is set and its host differs from the live host (`xgjc-aodb-3a7q.n7e.xano.io`); the runner contains a hard-coded deny-list for the live host.
+2. `PMF_TEST_ENV_HOST` (the isolated tenant host recorded by the operator from `xano ephemeral get`) equals the host of `PMF_TEST_BASE_URL`, and the URL path starts with `/api:pmf-app`.
+3. `PMF_TEST_TENANT_NAME` is set and the operator has confirmed it (`--confirm-tenant <name>` must match).
+4. Read-only canary: `GET auth/me` with the test owner token returns an email ending in the synthetic domain `@pmf-test.invalid`; `GET products` returns only products whose names start with `SYNTH-`. Any other result aborts before the first write.
+5. Tokens are read from environment variables only; nothing is written to disk or Git.
+
+## R8.6 Approvals still required
+Unchanged from R7 items 2–7, minus the `auth/login` change (U10 now excludes it).
