@@ -1,8 +1,8 @@
 # Project Status
 
 **Date:** 2026-10-22
-**Milestone:** Phase 2 Batch 1 server dry-run passed; real push pending
-**Product build:** Xano workspace `pmf` (ID 2) inspected by Claude; owner user created and auth endpoints reported working by user; no PMF business tables, business APIs or frontend implemented
+**Milestone:** Phase 2 Batch 1 applied and verified — Market tables `products`, `segments`, `customers` live in Xano `pmf` (3 of 10 business tables)
+**Product build:** Xano workspace `pmf` (ID 2), branch `v1` (live): auth starter plus three empty Market tables; no business APIs, no records in business tables, no frontend
 **Production:** No PMF Engine application deployed
 
 ## Completed / documented
@@ -15,7 +15,7 @@
 
 ## Not started
 - [x] Phase 1: Read-only Xano CLI workspace inventory (Claude report received; no changes made); defer frontend inspection
-- [ ] Phase 2: Physical Xano schema
+- [ ] Phase 2: Physical Xano schema — Batch 1 (Market: `products`, `segments`, `customers`) applied and verified; Research, Intelligence and Validation tables not started
 - [ ] Phase 3: Auth and market/customer/interview APIs
 - [ ] Phase 4: Survey/report API and sample-cohort tests
 - [ ] Phase 5: Insight/evidence/hypothesis/experiment APIs
@@ -76,15 +76,25 @@
 - **Next gate:** real partial push, with an interactive confirmation; do not use `--force`, `--sync`, `--delete`, `--records`, `--env`, `--truncate`, or `--no-transaction`. Re-run dry-run immediately before it and stop if preview changes.
 - After push: disable `allow_push`; inspect `pmf` schema and its indexes/references, unchanged `user`/auth endpoints and signup External Access state; note any local GUID/writeback modifications and reconcile them deliberately in Git. Never assume Git metadata changed remotely until independently verified.
 
+## Phase 2 Batch 1 applied and verified (2026-10-22)
+- Pre-push: Git clean at `f82ff6b` = `origin/main`; source hashes matched `f9c0315`; a repeat dry-run returned the identical preview (3 table CREATEs, nothing else).
+- The real push could not be confirmed from Claude's non-TTY shell (CLI refuses without `--force`), so the **user ran the interactive partial push** `xano workspace push -p pmf -w 2 -b v1 -d ./xano/market` in their own terminal. No `--force`, `--sync`, `--delete`, `--records`, `--env`, `--truncate` or `--no-transaction`.
+- Read-back (Claude, CLI pull of workspace 2 / `v1`): workspace now holds 9 documents — the 6 pre-existing (`workspace/pmf`, `table/user`, `Authentication` group, `auth/login`, `auth/me`, `auth/signup`) are **byte-identical** to the pre-push pull, plus `products`, `segments`, `customers`.
+- The three server definitions match Git after normalizing formatting: fields, types, nullability/optionality, references (`owner_user_id`→`user`, `product_id`→`products`, `segment_id`→`segments`), filters, `sensitive` flags, enum values `prospect/active/former` with default `prospect`, and all indexes (incl. unique `segments(product_id,name)` and `customers(product_id,external_id)`). A comparator negative control (altered enum, index direction, nullability) was correctly detected. Server-side formatting differs only cosmetically: field `description` attributes are rendered as `//` comments, composite indexes are multi-line, the enum default is unquoted.
+- CLI GUID writeback added one `guid = "…"` line to each of the three Git source files; GUIDs match the server's. These are committed so future pushes map to the same tables.
+- `allow_push` verified **false** again via CLI after the user disabled it in the UI.
+- **User-confirmed in the Xano UI (not independently testable by Claude):** `auth/signup` External Access still off; `products`, `segments`, `customers` each have 0 records. Claude's attempt to count records via the Metadata API was not completed (credential access was declined by the session's permission policy).
+
 ## One next action
-With the owner's authorization, perform an **interactive partial push** from the PMF repository root: `xano workspace push -p pmf -w 2 -b v1 -d ./xano/market`, only after matching the exact three-create dry-run. Stop if any other change appears or CLI raises new warnings. Then immediately disable direct push and complete read-back verification.
+Review Batch 1 results and decide on Batch 2 (Research tables: `interviews`, `survey_waves`, `survey_participations`) using the same gate: local XanoScript → offline validation → commit → temporary direct push → dry-run → separately approved interactive push → disable push → read-back. In the next dry-run, any UPDATE on the three Market tables (e.g. from description-vs-comment formatting) must be investigated before pushing.
 
 ## Approved-stack status
 Xano selected; frontend still undecided between WeWeb and a coded frontend deployed on Vercel.
 
 ## Current risks
-- Live public signup must be locked after owner login is established; future APIs must also reject **all non-owner auth identities** (data-level owner IDs alone do not enforce a single-user application).
-- Xano CLI `allow_push` is disabled. Enabling it is explicitly flagged as critical by the CLI; requires separate approval and dry-run safeguards.
+- `auth/signup` External Access is reported off by the user; the setting is not visible in XanoScript pulls, so re-confirm it in the UI after every push. Future APIs must also reject **all non-owner auth identities** (data-level owner IDs alone do not enforce a single-user application).
+- Xano CLI `allow_push` is disabled (verified 2026-10-22 after Batch 1). Enabling it is explicitly flagged as critical by the CLI; requires separate approval and dry-run safeguards.
+- Market tables enforce only native constraints (types, enums, unique indexes). Reference existence, same-product consistency (customer.segment.product = customer.product), blank-`external_id`→null normalization and owner checks must be implemented in the Phase 3 APIs.
 - Always specify CLI profile `pmf` and workspace 2, never depend on the default profile; the Goodz instance is shared.
 - The frontend has not been selected; Vercel is a deployment platform and requires a separate frontend implementation choice.
 - Database-level cross-product referential integrity may require explicit API validation.

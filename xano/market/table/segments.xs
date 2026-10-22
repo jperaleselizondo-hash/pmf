@@ -20,4 +20,5 @@ table segments {
     {type: "btree|unique", field: [{name: "product_id", op: "asc"}, {name: "name", op: "asc"}]}
     {type: "btree", field: [{name: "created_at", op: "desc"}]}
   ]
+  guid = "W-EFpGzVVRJ7rIR2Ht4QqRcxxlE"
 }

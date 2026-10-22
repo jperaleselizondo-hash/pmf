@@ -23,4 +23,5 @@ table products {
     {type: "btree", field: [{name: "owner_user_id", op: "asc"}]}
     {type: "btree", field: [{name: "created_at", op: "desc"}]}
   ]
+  guid = "26r_-iqjhyP6qBUvafvHiJpZCSs"
 }

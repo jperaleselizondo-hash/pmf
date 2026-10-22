@@ -39,4 +39,5 @@ table customers {
     {type: "btree", field: [{name: "segment_id", op: "asc"}]}
     {type: "btree", field: [{name: "created_at", op: "desc"}]}
   ]
+  guid = "3qTdCCfisuX1dnKCKzk48O8pzKI"
 }
