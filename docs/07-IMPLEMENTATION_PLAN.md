@@ -19,6 +19,16 @@ A **read-only** reconnaissance prompt for Claude Code in Cursor:
 
 > Read PROJECT_CONTEXT.md, CLAUDE.md, docs/04-LOGICAL_DATA_MODEL.md, docs/06-TECHNICAL_ARCHITECTURE.md, and docs/PROJECT_STATUS.md. Inspect the Git baseline and discover the available Xano MCP tools. Find the user-created Xano workspace named `pmf` and report its observed workspace ID and development/live branch state; do not assume that a similarly named workspace is the intended one without confirming its identity. Inventory existing tables, API groups, and potential naming conflicts (the workspace may be empty). Without making changes, propose a minimal physical Xano schema for the ten business tables: field types, references, indexes/uniqueness, validation and authorization strategy, native constraints versus API-enforced invariants, and safe order of creation. Include how Xano authentication infrastructure fits outside the ten domain tables. Identify risks, missing permissions and exact approvals needed. **Read-only only:** do not create/edit tables, records, auth, API endpoints, credentials, branches, frontend projects, or publish anything. Frontend choice between WeWeb and Vercel-hosted code is deferred.
 
+## Phase 1 follow-up: unblock access (2026-10-22)
+Claude's initial read-only report confirms the PMF Git baseline but could not inspect `pmf`: no Xano Developer MCP was active in that Claude Code session. An apparent global Cursor MCP config is **not** proof that Claude Code has that connection.
+
+**Important tool distinction:** `@xano/developer-mcp` documents XanoScript/Meta API/CLI and validates code; it does not by itself authenticate Claude into a live workspace. Use Xano CLI or authenticated Metadata API to inspect actual workspaces, after selecting an explicit profile for `pmf`. Official references: https://github.com/xano-inc/xano-developer-mcp and https://github.com/xano-inc/cli.
+
+1. Register the Developer MCP for the PMF Claude Code project only, if desired, and verify `claude mcp list` in that context. Restart the Claude session to load new connections.
+2. Use Xano CLI (or authorized equivalent) with owner-approved authentication. Establish a **distinct `pmf` profile**; never rely on global default workspace or reuse a Goodz profile implicitly. Never print credentials or commit token-bearing files.
+3. Read-only: list workspaces; identify `pmf` by name and observed ID; list its branches; inspect schema/auth/API inventory using explicitly targeted workspace/profile arguments.
+4. Revisit physical schema proposals, especially native type/index support, evidence source fields, owner ID and deletion/review invariants. Report verified capabilities vs assumptions; request authorization before any data/schema/branch mutation.
+
 ## Phase 2 design choices to settle after inspection
 - Xano ID/reference field types and naming conventions.
 - Owner auth identity, private data access pattern and permission enforcement.
