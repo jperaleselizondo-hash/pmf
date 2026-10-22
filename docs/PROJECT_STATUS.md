@@ -1,7 +1,7 @@
 # Project Status
 
 **Date:** 2026-10-22
-**Milestone:** Phase 2 Batch 1 applied and verified — Market tables `products`, `segments`, `customers` live in Xano `pmf` (3 of 10 business tables)
+**Milestone:** Phase 2 Batch 2 Research schema prepared and offline-validated; not committed or applied (3 of 10 business tables live)
 **Product build:** Xano workspace `pmf` (ID 2), branch `v1` (live): auth starter plus three empty Market tables; no business APIs, no records in business tables, no frontend
 **Production:** No PMF Engine application deployed
 
@@ -85,8 +85,16 @@
 - `allow_push` verified **false** again via CLI after the user disabled it in the UI.
 - **User-confirmed in the Xano UI (not independently testable by Claude):** `auth/signup` External Access still off; `products`, `segments`, `customers` each have 0 records. Claude's attempt to count records via the Metadata API was not completed (credential access was declined by the session's permission policy).
 
+## Phase 2 Batch 2 prepared — Research schema review (2026-10-22)
+- Claude prepared `interviews.xs`, `survey_waves.xs`, `survey_participations.xs` in its local scratchpad **only**. Reported 6/6 offline validation passes (including three Market controls), 7 malformed negative controls rejected by validator; five additional semantic errors passed validator but were caught by Claude's separate semantic checks.
+- No Research tables exist in Xano and the proposed files are not committed yet. Workspace direct push remains disabled.
+- Schema review accepted the **field definitions and indexes as written**, as a recommended V1 implementation baseline: interview history by customer/date, product survey waves by start time, one participation per wave/customer via composite uniqueness, indexed survey segmentation via snapshotted segment.
+- Research design decisions (D-018–D-023): nullable survey start for drafts; nullable raw interview notes with minimum meaningful content enforced by future app/API before citation; raw observations untrimmed; closed waves read-only except explicit reopen, with no claimed audit log; permit partial responses without a PMF category but reject a category without responded_at; no unique survey name.
+- Follow-up Phase 4 API requirements: wave must start before accepting responses; survey customer/product IDs must match; `segment_id_snapshot` is set on the server at eligibility and immutable; score denominator counts only responded_at plus valid `disappointment_level`; report partial respondents separately; historical product associations must not be altered after research exists.
+- The server dry-run must test new-to-new table references and `enum values = ["very", "somewhat", "not"]`; offline validation does not prove semantics. Stop if the next server diff proposes **any change** to Market tables or existing auth.
+
 ## One next action
-Review Batch 1 results and decide on Batch 2 (Research tables: `interviews`, `survey_waves`, `survey_participations`) using the same gate: local XanoScript → offline validation → commit → temporary direct push → dry-run → separately approved interactive push → disable push → read-back. In the next dry-run, any UPDATE on the three Market tables (e.g. from description-vs-comment formatting) must be investigated before pushing.
+Have Claude copy only the three reviewed, unchanged Research XanoScript definitions from its scratchpad into `xano/research/table/`, revalidate, check for secrets and unrelated diffs, then commit/push **source files only**. No Xano settings, database changes, server dry-run, API development, or frontend work. After confirming the source commit, separately authorize temporary direct CLI push for server-side **dry-run only**.
 
 ## Approved-stack status
 Xano selected; frontend still undecided between WeWeb and a coded frontend deployed on Vercel.
