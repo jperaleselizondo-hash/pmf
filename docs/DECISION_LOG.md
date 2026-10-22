@@ -27,6 +27,8 @@ This records design choices, not deployed features.
 | D-021 | 2026-10-22 | Closed wave is read-only; explicit reopening required for corrections | Preserve a stable measurement window; no assertion of an audit log until implemented |
 | D-022 | 2026-10-22 | Category without `responded_at` invalid; `responded_at` without category allowed as partial | Separate survey participation from valid PMF denominator; report incomplete responses |
 | D-023 | 2026-10-22 | Do not enforce unique `survey_waves(product_id, name)` | Stable wave ID distinguishes repeated survey names |
+| D-024 | 2026-10-22 | Research tables applied to `pmf` (ID 2) branch `v1`: dry-run (3 CREATEs) → user-run interactive partial push → push disabled → read-back; server GUIDs committed | Verified: 9 pre-existing definitions byte-identical, Research schema matches `xano/research/table/*.xs`; `allow_push` confirmed false via CLI after a re-toggle |
+| D-025 | 2026-10-22 | The push gate is closed only when the CLI reports `allow_push: false` | The UI toggle was once reported off while the CLI still showed true |
 
 ## Open technical decisions
 Not yet decided: physical schema for the remaining seven business tables (Market conventions in D-017 are the default); dev/data-source isolation beyond live branch `v1`; frontend choice and, if Vercel, frontend framework; API naming; referential deletion semantics; finalized authentication policy; backup and release mechanism. Resolve after read-only environment inventory. Mark updates here with dated decisions and supporting test or rationale.

@@ -1,8 +1,8 @@
 # Project Status
 
 **Date:** 2026-10-22
-**Milestone:** Phase 2 Batch 2 Research source committed and locally validated; server dry-run pending (3 of 10 business tables live)
-**Product build:** Xano workspace `pmf` (ID 2), branch `v1` (live): auth starter plus three empty Market tables; no business APIs, no records in business tables, no frontend
+**Milestone:** Phase 2 Batch 2 applied and verified — Research tables `interviews`, `survey_waves`, `survey_participations` live (6 of 10 business tables)
+**Product build:** Xano workspace `pmf` (ID 2), branch `v1` (live): auth starter plus three empty Market and three empty Research tables; no business APIs, no records in business tables, no frontend
 **Production:** No PMF Engine application deployed
 
 ## Completed / documented
@@ -15,7 +15,7 @@
 
 ## Not started
 - [x] Phase 1: Read-only Xano CLI workspace inventory (Claude report received; no changes made); defer frontend inspection
-- [ ] Phase 2: Physical Xano schema — Batch 1 (Market: `products`, `segments`, `customers`) applied and verified; Research, Intelligence and Validation tables not started
+- [ ] Phase 2: Physical Xano schema — Batch 1 (Market) and Batch 2 (Research: `interviews`, `survey_waves`, `survey_participations`) applied and verified; final Intelligence + Validation batch drafted on branch `feat/final-schema-batch`, not merged or deployed
 - [ ] Phase 3: Auth and market/customer/interview APIs
 - [ ] Phase 4: Survey/report API and sample-cohort tests
 - [ ] Phase 5: Insight/evidence/hypothesis/experiment APIs
@@ -99,15 +99,24 @@
 - **No Xano changes** occurred in this source-only step. Research tables are not live; `allow_push` remains reported false. Per-table GUIDs will be assigned only after a future successful server push.
 - The Research design remains D-018 through D-023. The decision-log Markdown table formatting was corrected in this same documentation-only update.
 
+## Phase 2 Batch 2 applied and verified (2026-10-22)
+- Server dry-run (Claude, `xano workspace push -p pmf -w 2 -b v1 -d ./xano/research --dry-run`, Git at `981e7c2`): exactly three CREATEs — `interviews`, `survey_participations`, `survey_waves`; no updates, deletes, records, Market/auth changes or validation errors. New-to-new references and `disappointment_level` values `very`/`somewhat`/`not` accepted. Workspace pull before and after the dry-run was identical.
+- Real interactive partial push was run by the user outside Claude's session (no `--force`/`--sync`/`--delete`/`--records`/`--env`/`--truncate`/`--no-transaction`).
+- Read-back (Claude, CLI pull of workspace 2 / `v1`): 12 documents. The 9 pre-existing definitions (`workspace/pmf`, `user`, `products`, `segments`, `customers`, `Authentication` group, `auth/login`, `auth/me`, `auth/signup`) are **byte-identical** to the pre-push pull. The three Research tables match `xano/research/table/*.xs` after formatting normalization (fields, types, nullability, references, filters, `sensitive` flags, enum values, indexes).
+- CLI writeback added one `guid = "…"` line per Research file; all three match the server and are committed with this update.
+- `allow_push`: after the push the CLI still reported **true** even though the UI had been reported disabled; the user re-toggled it and Claude verified **false** via CLI before this commit. Lesson: always confirm the push setting via CLI, not only the UI.
+- **User-confirmed in the Xano UI (not independently testable by Claude):** `auth/signup` External Access still off; `interviews`, `survey_waves`, `survey_participations` each have 0 records.
+
 ## One next action
-From current `main`, the user confirms `auth/signup` External Access is still disabled and owner login works. The user may then temporarily turn on **Allow Direct Workspace Push** only for Xano `pmf` workspace 2. Claude runs the restricted **dry-run only**: `xano workspace push -p pmf -w 2 -b v1 -d ./xano/research --dry-run` from the repository root. Acceptable preview: exactly three Research CREATE operations and **zero** updates/deletes to Market, auth or other resources. Do not execute a real push until a separate approval; disable direct push after the eventual implementation.
+Validate the final Intelligence + Validation batch on `feat/final-schema-batch` (offline syntax/semantic checks and negative controls) and resolve remaining review items before merging into `main`. Then follow the same gate: merge → user confirms signup lock → temporary direct push → dry-run (`-d ./xano/intelligence_validation`, exactly four CREATEs) → separately approved interactive push → disable push and verify via CLI → read-back.
 
 ## Approved-stack status
 Xano selected; frontend still undecided between WeWeb and a coded frontend deployed on Vercel.
 
 ## Current risks
 - `auth/signup` External Access is reported off by the user; the setting is not visible in XanoScript pulls, so re-confirm it in the UI after every push. Future APIs must also reject **all non-owner auth identities** (data-level owner IDs alone do not enforce a single-user application).
-- Xano CLI `allow_push` is disabled (verified 2026-10-22 after Batch 1). Enabling it is explicitly flagged as critical by the CLI; requires separate approval and dry-run safeguards.
+- Xano CLI `allow_push` is disabled (verified via CLI 2026-10-22 after Batch 2). The UI toggle once appeared off while the CLI still reported true; always verify via `xano workspace get -p pmf -w 2`. Enabling it is explicitly flagged as critical by the CLI; requires separate approval and dry-run safeguards.
+- Research tables enforce only native constraints (types, enums, unique `(survey_wave_id, customer_id)`). Same-product survey membership, server-assigned immutable segment snapshots, valid-response rules, wave locking and closed-wave protection are Phase 4 API work (D-018–D-023).
 - Market tables enforce only native constraints (types, enums, unique indexes). Reference existence, same-product consistency (customer.segment.product = customer.product), blank-`external_id`→null normalization and owner checks must be implemented in the Phase 3 APIs.
 - Always specify CLI profile `pmf` and workspace 2, never depend on the default profile; the Goodz instance is shared.
 - The frontend has not been selected; Vercel is a deployment platform and requires a separate frontend implementation choice.

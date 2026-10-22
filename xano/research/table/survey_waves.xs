@@ -30,4 +30,5 @@ table survey_waves {
     {type: "btree", field: [{name: "product_id", op: "asc"}, {name: "started_at", op: "desc"}]}
     {type: "btree", field: [{name: "created_at", op: "desc"}]}
   ]
+  guid = "7rzSEsCL5yff08vWEq55HzQhwR8"
 }

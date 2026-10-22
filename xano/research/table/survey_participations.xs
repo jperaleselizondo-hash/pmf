@@ -50,4 +50,5 @@ table survey_participations {
     {type: "btree", field: [{name: "survey_wave_id", op: "asc"}, {name: "segment_id_snapshot", op: "asc"}]}
     {type: "btree", field: [{name: "created_at", op: "desc"}]}
   ]
+  guid = "BF-adhEQRC36Y0SmfrZV-6mZJVs"
 }

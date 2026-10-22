@@ -34,4 +34,5 @@ table interviews {
     {type: "btree", field: [{name: "conducted_at", op: "desc"}]}
     {type: "btree", field: [{name: "created_at", op: "desc"}]}
   ]
+  guid = "Rn5-pgcU3AlVaY6It6rOoOtFtKg"
 }
