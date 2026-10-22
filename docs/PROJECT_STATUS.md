@@ -1,7 +1,7 @@
 # Project Status
 
 **Date:** 2026-10-22
-**Milestone:** Phase 2 Batch 1 local Market schema drafted; server dry-run and signup lockdown pending
+**Milestone:** Phase 2 Batch 1 Market XanoScript committed; server dry-run and signup lockdown pending
 **Product build:** Xano workspace `pmf` (ID 2) inspected by Claude; owner user created and auth endpoints reported working by user; no PMF business tables, business APIs or frontend implemented
 **Production:** No PMF Engine application deployed
 
@@ -60,8 +60,15 @@
 - Recommended path: save only these three XanoScript files in an isolated repository folder and commit; independently verify `auth/signup` External Access disabled and login unaffected; after approval temporarily enable direct CLI push; run **dry-run only**, require exactly 3 additions/0 updates/0 deletes; get a **separate approval** before the real push with interactive confirmation and no force/sync/delete/records/env/truncate.
 - Avoid Xano's account-level sandbox reset or promotion if it may affect an unrelated Goodz sandbox. Direct push bypasses Xano's default sandbox review and therefore requires particularly strict scope.
 
+## Market source commit verified (2026-10-22)
+- Claude committed and pushed three **unchanged** XanoScript files at GitHub commit `f9c031591c3742c8534cac959330d55de8f3ca75`: `xano/market/table/products.xs`, `segments.xs`, and `customers.xs` (91 lines total).
+- GitHub `main` was independently verified at `f9c0315` before this status update; source files were read and match the three reviewed schemas.
+- Claude confirmed offline validation passed all three; **not yet server-validated or deployed to Xano**. `allow_push` is still reported off, and public signup lockdown remains unconfirmed.
+- **Push working directory:** use `-d ./xano/market`, the directory containing `table/`, not `-d ./xano/market/table`. The latter omits Xano's expected relative `table/` folder.
+- Next stage: user verifies signup External Access disabled plus owner login, then may explicitly and temporarily enable direct CLI push in Xano UI. Claude performs **server dry-run only** and shows an exact preview of three creates, zero changes/deletes. Actual push requires a separate approval.
+
 ## One next action
-Copy validated Market table definitions from Claude's scratchpad into `xano/market/table/` in the project repository and commit **source files only**. No Xano push, settings changes or production deployment. Meanwhile the user should turn off External Access on `auth/signup` and verify that login still works. Only then consider granting a brief direct-push setting change to obtain the server dry-run.
+Confirm the signup External Access lockdown in the Xano UI and owner login. If verified, user may temporarily enable **Allow Direct Workspace Push** specifically in `pmf` workspace 2; Claude then runs only `xano workspace push -p pmf -w 2 -b v1 -d ./xano/market --dry-run` from the repository root and stops with the server preview. No real push yet, and do not enable push in the Goodz workspace.
 
 ## Approved-stack status
 Xano selected; frontend still undecided between WeWeb and a coded frontend deployed on Vercel.
