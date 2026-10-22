@@ -1,6 +1,6 @@
 # Final schema batch: Intelligence + Validation (DRAFT)
 
-**Status:** Locally validated by Claude (4/4 XanoScript files and semantic checks), reviewed and revised for C1–C5. Revised files have NOT been revalidated yet, server dry-run has not occurred, and deployment/merge is not approved.
+**Status:** Reviewed and locally validated by Claude after C1–C5 revisions (all 10 schema definitions passed syntax and semantic checks; revised-final-batch negative controls 9/9 caught). Research Batch 2 is closed at `c32af8b` on `main` with GUIDs committed. The final four definitions have NOT been server dry-run or deployed.
 
 **Git branch:** `feat/final-schema-batch`. Keep these files separate from the `main` branch while Research Batch 2 is deployed.
 
@@ -17,10 +17,10 @@
 - Defaults approved as drafted: low insight confidence, draft insight review status, medium hypothesis priority, proposed hypothesis status. `type` and `relationship` enum fields remain explicit and required. The server must verify enum field names/values.
 - Child tables carry parent references rather than redundant product IDs. Ownership and product consistency must be enforced in all APIs.
 
-## Remaining review gates
-- Revalidate these **revised** source files (offline syntax, semantic checks, negative controls). The previously reported validator pass was against the prior draft.
-- Close Research Batch 2 first: user disables direct push, verifies signup lock and empty Research tables; Claude verifies read-back then commits Research GUIDs/docs on `main`.
-- Never merge into `main`, enable CLI push or deploy the final batch until the Research closure is verified.
+## Review results and remaining gates
+- Claude reviewed the **revised** four-table batch (feature commit `2f16cf5`) against the six live Market/Research definitions: 10/10 passed offline syntax and semantic checks; 9/9 negative controls detected. Reports no blocking schema decisions.
+- Research Batch 2 closed in `main` commit `c32af8b`; owner confirmed signup External Access off and zero Research records. CLI verified `allow_push: false` after a second UI toggle.
+- Before server deployment, merge the reviewed source definitions into `main` and record C1–C5 in `docs/DECISION_LOG.md`. Then verify branch/current Git state and confirm only four intended CREATE operations in the Xano server dry-run. Real push needs separate explicit approval, followed by restoring and confirming `allow_push: false`.
 
 ## Rules that require later API enforcement
 1. `insights.segment_id` must refer to a segment belonging to the insight's product.
@@ -32,11 +32,11 @@
 7. Every API endpoint requires the designated authenticated owner; restrict cross-product references and mutations.
 
 ## Deployment gate
-1. Research Batch 2 tables have reportedly been pushed and read back, but **not closed**: first disable direct push; confirm signup lock/empty tables, and commit GUIDs/docs on `main`.
+1. **Complete:** Research Batch 2 pushed/read back with GUIDs and docs committed at `c32af8b`. Confirm current `main` contains this commit before merging final source files.
 2. Pull current `main` and reconcile this feature branch without overwriting Research updates.
-3. Have Claude run offline XanoScript syntax **and semantic** validation and inspect the definitions; resolve review points before merging into `main`.
-4. Commit reviewed schema to `main`; user verifies auth/signup External Access disabled and permits temporary `allow_push=true` in `pmf`, workspace 2 only.
+3. **Complete:** Claude ran offline XanoScript syntax/semantic checks and revision-focused negative controls (10/10 valid, 9/9 invalid cases rejected). Retain this report; the server still must validate exact enum names, defaults, and three-column index.
+4. Merge reviewed source files into `main` (no Xano changes) and record C1–C5 decisions; user verifies `auth/signup` External Access disabled, then explicitly permits temporary `allow_push=true` in `pmf`, workspace 2 only.
 5. Dry-run only: `xano workspace push -p pmf -w 2 -b v1 -d ./xano/intelligence_validation --dry-run`; accept only four CREATE operations and no modifications, then obtain separate authorization for an interactive actual push without `--force`.
 6. Re-disable `allow_push`, compare read-back definitions, preserve assigned table GUIDs, verify existing schema/auth untouched, and update the status/decision logs.
 
-**Never run the real push from this branch or before the review gates.**
+**Never run the real push from this feature branch. Only deploy the merged, reviewed source from `main` after a successful server preview and separate authorization.**
