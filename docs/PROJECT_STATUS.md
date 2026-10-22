@@ -1,7 +1,7 @@
 # Project Status
 
 **Date:** 2026-10-22
-**Milestone:** Phase 2 Batch 2 Research schema prepared and offline-validated; not committed or applied (3 of 10 business tables live)
+**Milestone:** Phase 2 Batch 2 Research source committed and locally validated; server dry-run pending (3 of 10 business tables live)
 **Product build:** Xano workspace `pmf` (ID 2), branch `v1` (live): auth starter plus three empty Market tables; no business APIs, no records in business tables, no frontend
 **Production:** No PMF Engine application deployed
 
@@ -93,8 +93,14 @@
 - Follow-up Phase 4 API requirements: wave must start before accepting responses; survey customer/product IDs must match; `segment_id_snapshot` is set on the server at eligibility and immutable; score denominator counts only responded_at plus valid `disappointment_level`; report partial respondents separately; historical product associations must not be altered after research exists.
 - The server dry-run must test new-to-new table references and `enum values = ["very", "somewhat", "not"]`; offline validation does not prove semantics. Stop if the next server diff proposes **any change** to Market tables or existing auth.
 
+## Phase 2 Batch 2 Research source-control milestone (Claude report, 2026-10-22)
+- GitHub `main` independently verified at `fb3e6ba2155a93054b96c1bd0dc6ff672d167ce8`; files present at `xano/research/table/interviews.xs`, `survey_waves.xs`, and `survey_participations.xs` (123 lines total).
+- Claude reported all three exactly match its reviewed scratchpad definitions, passed the offline XanoScript validator v2.2.6 and additional semantic checks; three Market definitions unchanged. No credentials, production records or generated sync state included.
+- **No Xano changes** occurred in this source-only step. Research tables are not live; `allow_push` remains reported false. Per-table GUIDs will be assigned only after a future successful server push.
+- The Research design remains D-018 through D-023. The decision-log Markdown table formatting was corrected in this same documentation-only update.
+
 ## One next action
-Have Claude copy only the three reviewed, unchanged Research XanoScript definitions from its scratchpad into `xano/research/table/`, revalidate, check for secrets and unrelated diffs, then commit/push **source files only**. No Xano settings, database changes, server dry-run, API development, or frontend work. After confirming the source commit, separately authorize temporary direct CLI push for server-side **dry-run only**.
+From current `main`, the user confirms `auth/signup` External Access is still disabled and owner login works. The user may then temporarily turn on **Allow Direct Workspace Push** only for Xano `pmf` workspace 2. Claude runs the restricted **dry-run only**: `xano workspace push -p pmf -w 2 -b v1 -d ./xano/research --dry-run` from the repository root. Acceptable preview: exactly three Research CREATE operations and **zero** updates/deletes to Market, auth or other resources. Do not execute a real push until a separate approval; disable direct push after the eventual implementation.
 
 ## Approved-stack status
 Xano selected; frontend still undecided between WeWeb and a coded frontend deployed on Vercel.
