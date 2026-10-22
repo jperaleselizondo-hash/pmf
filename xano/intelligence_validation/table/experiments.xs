@@ -42,4 +42,5 @@ table experiments {
     {type: "btree", field: [{name: "started_at", op: "desc"}]}
     {type: "btree", field: [{name: "created_at", op: "desc"}]}
   ]
+  guid = "1hWyPDMYIkwok72dqn-vvP9bl8c"
 }

@@ -40,4 +40,5 @@ table insights {
     {type: "btree", field: [{name: "product_id", op: "asc"}, {name: "review_status", op: "asc"}, {name: "created_at", op: "desc"}]}
     {type: "btree", field: [{name: "created_at", op: "desc"}]}
   ]
+  guid = "K1RgsuR1hhTzwG5WtPLC6m6xd4I"
 }

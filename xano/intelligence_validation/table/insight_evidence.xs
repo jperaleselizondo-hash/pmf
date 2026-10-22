@@ -41,4 +41,5 @@ table insight_evidence {
     {type: "btree", field: [{name: "survey_participation_id", op: "asc"}]}
     {type: "btree", field: [{name: "created_at", op: "desc"}]}
   ]
+  guid = "7MpUiRJshiI4IDB9h1kajYmRXAg"
 }

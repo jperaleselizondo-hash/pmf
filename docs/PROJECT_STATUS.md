@@ -1,8 +1,8 @@
 # Project Status
 
 **Date:** 2026-10-22
-**Milestone:** Phase 2 Batch 3 final schema merged to GitHub main; Xano server dry-run pending (6 of 10 business tables live)
-**Product build:** Xano workspace `pmf` (ID 2), branch `v1` (live): auth starter plus three empty Market and three empty Research tables; no business APIs, no records in business tables, no frontend
+**Milestone:** Phase 2 complete — all 10 business tables live and verified in Xano (Market, Research, Intelligence, Validation)
+**Product build:** Xano workspace `pmf` (ID 2), branch `v1` (live): auth starter plus ten empty business tables; no business APIs, no records in business tables, no frontend
 **Production:** No PMF Engine application deployed
 
 ## Completed / documented
@@ -15,7 +15,7 @@
 
 ## Not started
 - [x] Phase 1: Read-only Xano CLI workspace inventory (Claude report received; no changes made); defer frontend inspection
-- [ ] Phase 2: Physical Xano schema — Batch 1 (Market) and Batch 2 (Research: `interviews`, `survey_waves`, `survey_participations`) applied and verified; final Intelligence + Validation batch drafted on branch `feat/final-schema-batch`, not merged or deployed
+- [x] Phase 2: Physical Xano schema — Batch 1 (Market), Batch 2 (Research) and Batch 3 (Intelligence + Validation: `insights`, `insight_evidence`, `hypotheses`, `experiments`) applied and verified; schema only, no records or APIs
 - [ ] Phase 3: Auth and market/customer/interview APIs
 - [ ] Phase 4: Survey/report API and sample-cohort tests
 - [ ] Phase 5: Insight/evidence/hypothesis/experiment APIs
@@ -115,16 +115,25 @@
 - The next task is the server-side dry-run for exactly four CREATEs. Ensure `allow_push=false` at rest, verify owner login/signup lock, temporarily enable direct push in `pmf` workspace 2 only for the preview, then separately approve the real interactive push.
 - Once all ten tables are live and verified, the user prefers **one consolidated API implementation batch** covering owner authorization, Market/Research CRUD, surveys/PMF reporting, evidence/insights, hypotheses and experiments. Maintain internal validation checkpoints and separate explicit production-write approval.
 
+## Phase 2 Batch 3 applied and verified — final schema (2026-10-22)
+- Server dry-run (Claude, `xano workspace push -p pmf -w 2 -b v1 -d ./xano/intelligence_validation --dry-run`, Git at `2ecad90`, merged files byte-identical to validated `2f16cf5`): exactly four CREATEs — `experiments`, `hypotheses`, `insight_evidence`, `insights`; no updates, deletes, records or existing-resource changes. Server accepted enum field names `type`/`relationship`, enum defaults, nullable enums, all references and the three-column `insights(product_id, review_status, created_at desc)` index. Workspace pull before and after the dry-run was identical.
+- Real interactive partial push was run by the user outside Claude's session (no `--force`/`--sync`/`--delete`/`--records`/`--env`/`--truncate`/`--no-transaction`).
+- Read-back (Claude, CLI pull of workspace 2 / `v1`): 16 documents. The 12 pre-existing definitions (workspace, `user`, 3 Market, 3 Research tables, `Authentication` group and its 3 endpoints) are **byte-identical** to the pre-push pull. The four new tables match `xano/intelligence_validation/table/*.xs` after formatting normalization.
+- CLI writeback added one `guid = "…"` line per file; all four match the server and are committed with this update.
+- `allow_push` verified **false** via CLI after the user disabled it.
+- **User-confirmed in the Xano UI (not independently testable by Claude):** `auth/signup` External Access still off; `insights`, `insight_evidence`, `hypotheses`, `experiments` each have 0 records.
+
 ## One next action
-Confirm `auth/signup` External Access remains disabled and owner login works. If so, explicitly authorize temporary direct push in `pmf` workspace 2 for the server dry-run: `xano workspace push -p pmf -w 2 -b v1 -d ./xano/intelligence_validation --dry-run`. Require **exactly** four table CREATE operations (`insights`, `insight_evidence`, `hypotheses`, `experiments`), zero updates/deletes, and no auth or existing-table changes. A real push requires separate approval, interactive confirmation, and post-push `allow_push=false` verified via CLI.
+Plan the consolidated business API batch (D-030): designated-owner guard, Market/Research CRUD, survey participation and PMF report, insights/evidence, hypotheses/experiments, with the API-enforced invariants from D-017–D-029 and `xano/intelligence_validation/REVIEW.md`. Start with a read-only design/proposal and synthetic-fixture test plan; no endpoints, records or settings changes without separate approval.
 
 ## Approved-stack status
 Xano selected; frontend still undecided between WeWeb and a coded frontend deployed on Vercel.
 
 ## Current risks
 - `auth/signup` External Access is reported off by the user; the setting is not visible in XanoScript pulls, so re-confirm it in the UI after every push. Future APIs must also reject **all non-owner auth identities** (data-level owner IDs alone do not enforce a single-user application).
-- Xano CLI `allow_push` is disabled (verified via CLI 2026-10-22 after Batch 2). The UI toggle once appeared off while the CLI still reported true; always verify via `xano workspace get -p pmf -w 2`. Enabling it is explicitly flagged as critical by the CLI; requires separate approval and dry-run safeguards.
+- Xano CLI `allow_push` is disabled (verified via CLI 2026-10-22 after Batch 3). The UI toggle once appeared off while the CLI still reported true; always verify via `xano workspace get -p pmf -w 2`. Enabling it is explicitly flagged as critical by the CLI; requires separate approval and dry-run safeguards.
 - Research tables enforce only native constraints (types, enums, unique `(survey_wave_id, customer_id)`). Same-product survey membership, server-assigned immutable segment snapshots, valid-response rules, wave locking and closed-wave protection are Phase 4 API work (D-018–D-023).
+- Intelligence/Validation tables enforce only native constraints (types, enums, defaults). Evidence source XOR, same-product evidence/segment checks, reviewed-insight evidence requirement, hypotheses only on reviewed insights, `source_field` validation and experiment consistency are API work (D-027–D-029, `REVIEW.md`).
 - Market tables enforce only native constraints (types, enums, unique indexes). Reference existence, same-product consistency (customer.segment.product = customer.product), blank-`external_id`→null normalization and owner checks must be implemented in the Phase 3 APIs.
 - Always specify CLI profile `pmf` and workspace 2, never depend on the default profile; the Goodz instance is shared.
 - The frontend has not been selected; Vercel is a deployment platform and requires a separate frontend implementation choice.

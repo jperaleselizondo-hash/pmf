@@ -30,4 +30,5 @@ table hypotheses {
     {type: "btree", field: [{name: "status", op: "asc"}, {name: "created_at", op: "desc"}]}
     {type: "btree", field: [{name: "created_at", op: "desc"}]}
   ]
+  guid = "rceJ9f8BqX5HjHmCCTxot8iam0k"
 }
