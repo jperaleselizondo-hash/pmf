@@ -1,6 +1,6 @@
 # Final schema batch: Intelligence + Validation (DRAFT)
 
-**Status:** Design drafts only. Not offline validated, not server dry-run, not approved for merge or deployment.
+**Status:** Locally validated by Claude (4/4 XanoScript files and semantic checks), reviewed and revised for C1–C5. Revised files have NOT been revalidated yet, server dry-run has not occurred, and deployment/merge is not approved.
 
 **Git branch:** `feat/final-schema-batch`. Keep these files separate from the `main` branch while Research Batch 2 is deployed.
 
@@ -8,12 +8,19 @@
 
 **Source:** `docs/04-LOGICAL_DATA_MODEL.md`. Uses Market/Research physical conventions, including `created_at`, nullable API-managed `updated_at`, plural names, relational reference metadata and indexes. All output handling must enforce owner authorization independently of `sensitive` metadata.
 
-## Schema review questions
-- Are low confidence for new insights and medium priority for new hypotheses appropriate defaults? Draft/review and proposed status default to `draft`/`proposed`.
-- Xano validator/server must confirm `enum type` works as a field name and all enum values/defaults are valid.
-- Review whether marking inferred statements and experiment notes/measurements sensitive is desired.
-- Should `source_field` remain optional free text? Proposed yes, with API field-name validation.
-- No redundant product IDs have been added to hypotheses, evidence or experiments. All product ownership is resolved through parent references.
+## Schema review decisions (C1–C5, 2026-10-22)
+- **C1 Sensitive fields:** mark `insights.statement`, `insight_evidence.excerpt`, `experiments.observed_result`, and `experiments.notes` as sensitive; not `experiments.baseline`, `experiments.target`, or `hypotheses.statement`. Metadata alone is NOT API authorization or guaranteed field redaction.
+- **C2 Trimming:** `filters=trim` on experiment `baseline`, `target`, `observed_result`, and `notes`. Keep original research interview/survey answers and evidence excerpts untrimmed; use evidence fields for verbatim quotations.
+- **C3 Provenance:** keep nullable, trimmed, validated-text `source_field` (not enum). For interviews allow `notes`, `transcript`, `existing_alternatives`, `problem_context`. For survey participations allow `beneficiary_description`, `main_benefit`, `improvement_request`. If provided, the field must exist on and contain nonblank source content; a survey participation is citable only after `responded_at`.
+- **C4 Multiple excerpts:** one source may support several distinct excerpts for an insight. No unique source constraint; warn on identical duplication in the API.
+- **C5 Query index:** replace global `(review_status, created_at DESC)` with `(product_id, review_status, created_at DESC)` to serve product-scoped status lists.
+- Defaults approved as drafted: low insight confidence, draft insight review status, medium hypothesis priority, proposed hypothesis status. `type` and `relationship` enum fields remain explicit and required. The server must verify enum field names/values.
+- Child tables carry parent references rather than redundant product IDs. Ownership and product consistency must be enforced in all APIs.
+
+## Remaining review gates
+- Revalidate these **revised** source files (offline syntax, semantic checks, negative controls). The previously reported validator pass was against the prior draft.
+- Close Research Batch 2 first: user disables direct push, verifies signup lock and empty Research tables; Claude verifies read-back then commits Research GUIDs/docs on `main`.
+- Never merge into `main`, enable CLI push or deploy the final batch until the Research closure is verified.
 
 ## Rules that require later API enforcement
 1. `insights.segment_id` must refer to a segment belonging to the insight's product.
@@ -25,7 +32,7 @@
 7. Every API endpoint requires the designated authenticated owner; restrict cross-product references and mutations.
 
 ## Deployment gate
-1. Wait for Research Batch 2 to be pushed, read back and documented, with its table GUIDs committed on `main`.
+1. Research Batch 2 tables have reportedly been pushed and read back, but **not closed**: first disable direct push; confirm signup lock/empty tables, and commit GUIDs/docs on `main`.
 2. Pull current `main` and reconcile this feature branch without overwriting Research updates.
 3. Have Claude run offline XanoScript syntax **and semantic** validation and inspect the definitions; resolve review points before merging into `main`.
 4. Commit reviewed schema to `main`; user verifies auth/signup External Access disabled and permits temporary `allow_push=true` in `pmf`, workspace 2 only.

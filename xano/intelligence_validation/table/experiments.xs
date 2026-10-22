@@ -15,15 +15,11 @@ table experiments {
     timestamp? started_at?
     timestamp? ended_at?
 
-    text? baseline? {
-      sensitive = true
-    }
+    text? baseline? filters=trim
 
-    text? target? {
-      sensitive = true
-    }
+    text? target? filters=trim
 
-    text? observed_result? {
+    text? observed_result? filters=trim {
       sensitive = true
     }
 
@@ -35,7 +31,7 @@ table experiments {
       values = ["adopt", "iterate", "reject", "investigate"]
     }
 
-    text? notes? {
+    text? notes? filters=trim {
       sensitive = true
     }
   }

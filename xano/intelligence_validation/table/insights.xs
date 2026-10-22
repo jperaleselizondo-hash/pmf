@@ -37,7 +37,7 @@ table insights {
     {type: "primary", field: [{name: "id"}]}
     {type: "btree", field: [{name: "product_id", op: "asc"}, {name: "created_at", op: "desc"}]}
     {type: "btree", field: [{name: "segment_id", op: "asc"}, {name: "created_at", op: "desc"}]}
-    {type: "btree", field: [{name: "review_status", op: "asc"}, {name: "created_at", op: "desc"}]}
+    {type: "btree", field: [{name: "product_id", op: "asc"}, {name: "review_status", op: "asc"}, {name: "created_at", op: "desc"}]}
     {type: "btree", field: [{name: "created_at", op: "desc"}]}
   ]
 }
