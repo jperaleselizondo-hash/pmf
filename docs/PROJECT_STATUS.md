@@ -1,7 +1,7 @@
 # Project Status
 
-**Date:** 2026-10-22
-**Milestone:** Phase 2 complete — all 10 business tables live and verified in Xano (Market, Research, Intelligence, Validation)
+**Date:** 2026-10-23
+**Milestone:** Phase 2 database complete; consolidated Phase 3 API source merged to GitHub `main` (Xano API deployment not yet started)
 **Product build:** Xano workspace `pmf` (ID 2), branch `v1` (live): auth starter plus ten empty business tables; no business APIs, no records in business tables, no frontend
 **Production:** No PMF Engine application deployed
 
@@ -123,8 +123,16 @@
 - `allow_push` verified **false** via CLI after the user disabled it.
 - **User-confirmed in the Xano UI (not independently testable by Claude):** `auth/signup` External Access still off; `insights`, `insight_evidence`, `hypotheses`, `experiments` each have 0 records.
 
+## Phase 3 source merge verified (2026-10-23)
+- **GitHub only:** PR #2 merged `docs/api-v1-design` to `main` at `0a1fe60`. `docs/API_V1_PROPOSAL.md` preserves the 48-endpoint contract, U1–U14 decisions, and the existing-workspace synthetic test strategy in Appendix R9.
+- **GitHub only:** PR #3 merged `feat/api-v1` at `597918640dbeb6f693b12af646110195fc8face2`. Adds 1 API group definition, 48 query definitions, 34 reusable function definitions, static checks, guarded live-workspace synthetic test suite and cleanup/runbook. All files are source files, **not deployed**.
+- Claude reports 93/93 XanoScript files offline-valid, 91/91 offline unit tests passing, 28/28 dry-run-checker negative controls, 18/18 static-checker negative controls. These are offline observations, **not runtime success**.
+- User chose existing `pmf` workspace 2, live `v1`, for synthetic testing followed by a verified selective purge. No new workspace/tenant. Safeguards require ten business tables empty before tests, fixed workspace identity, explicit confirmations, owner/non-owner checks, and delete-by-verified-ID cleanup.
+- Current Xano state last reported by Claude: 16 schema definitions, 10 empty business tables, only existing Authentication APIs, **no deployed PMF business APIs**, and `allow_push: false`. None of the GitHub merges touched Xano.
+- Important unproven runtime dependencies: exact CLI dry-run output and API canonical uniqueness; Metadata API pagination/content permissions; HTTP semantics and transaction rollback; survey calculations; no-op parent-lock effectiveness. All runtime testing and any production changes still require their own approval.
+
 ## One next action
-Plan the consolidated business API batch (D-030): designated-owner guard, Market/Research CRUD, survey participation and PMF report, insights/evidence, hypotheses/experiments, with the API-enforced invariants from D-017–D-029 and `xano/intelligence_validation/REVIEW.md`. Start with a read-only design/proposal and synthetic-fixture test plan; no endpoints, records or settings changes without separate approval.
+Prepare the first **server-side dry-run only** of the merged `xano/app` source against workspace `pmf`, ID 2, branch `v1`. Verify Git clean and synchronized, Xano unchanged, `auth/signup` External Access disabled, and ten business tables empty. The owner must separately configure `PMF_OWNER_USER_ID` using their verified `auth/me` ID before live API activation; do **not** create the test account or Metadata token for the dry-run. Temporarily enable direct push only with owner approval; capture exit status using `pipefail`. Require precisely one new `pmf-app` group, 48 new queries, 34 new functions, no table/auth updates/deletions. Stop after preview and disable direct push pending separate real-push approval.
 
 ## Approved-stack status
 Xano selected; frontend still undecided between WeWeb and a coded frontend deployed on Vercel.
