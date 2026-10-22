@@ -62,8 +62,20 @@ query "products/{product_id}/insights" verb=GET {
           return = {type: "count"}
         } as $hypothesis_count
 
+        var $evidence_count {
+          value = {supports: $supports, contradicts: $contradicts}
+        }
+
+        var $row {
+          value = $insight|set:"evidence_count":($evidence_count)
+        }
+
+        var.update $row {
+          value = $row|set:"hypothesis_count":($hypothesis_count)
+        }
+
         var.update $items {
-          value = $items|push:($insight|set:"evidence_count":{supports: $supports, contradicts: $contradicts}|set:"hypothesis_count":$hypothesis_count)
+          value = $items|push:($row)
         }
       }
     }

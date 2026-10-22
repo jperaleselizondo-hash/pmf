@@ -22,7 +22,27 @@ query "interviews/{interview_id}" verb=GET {
       return = {type: "list"}
       output = ["id", "insight_id", "relationship", "source_field"]
     } as $evidence
+
+    var $customer_summary {
+      value = {id: $access.customer.id, name: $access.customer.name, external_id: $access.customer.external_id}
+    }
+
+    var $cited {
+      value = ($evidence|count) > 0
+    }
+
+    var $out {
+      value = $access.record|set:"customer":($customer_summary)
+    }
+
+    var.update $out {
+      value = $out|set:"evidence":($evidence)
+    }
+
+    var.update $out {
+      value = $out|set:"cited":($cited)
+    }
   }
 
-  response = $access.record|set:"customer":{id: $access.customer.id, name: $access.customer.name, external_id: $access.customer.external_id}|set:"evidence":$evidence|set:"cited":($evidence|count) > 0
+  response = $out
 }

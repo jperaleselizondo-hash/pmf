@@ -72,7 +72,7 @@ query "survey-waves/{wave_id}/participations" verb=GET {
         conditional {
           if ($keep) {
             var.update $filtered {
-              value = $filtered|push:{id: $row.id, customer: {id: $row.customer_id, name: $row.customer_name, external_id: $row.customer_external_id}, segment_id_snapshot: $row.segment_id_snapshot, invited_at: $row.invited_at, responded_at: $row.responded_at, disappointment_level: $row.disappointment_level, beneficiary_description: $row.beneficiary_description, main_benefit: $row.main_benefit, improvement_request: $row.improvement_request, status: $status, created_at: $row.created_at}
+              value = $filtered|push:{id: $row.id, customer: {id: $row.customer_id, name: $row.customer_name, external_id: $row.customer_external_id}, segment_id_snapshot: $row.segment_id_snapshot, invited_at: $row.invited_at, responded_at: $row.responded_at, disappointment_level: $row.disappointment_level, beneficiary_description: $row.beneficiary_description, main_benefit: $row.main_benefit, improvement_request: $row.improvement_request, status: $status, created_at: $row.created_at, updated_at: $row.updated_at}
             }
           }
         }

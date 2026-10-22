@@ -49,8 +49,20 @@ query "products/{product_id}/hypotheses" verb=GET {
           return = {type: "count"}
         } as $experiment_count
 
+        var $insight_summary {
+          value = {id: $hypothesis.insight_id, statement: $hypothesis.insight_statement}
+        }
+
+        var $row {
+          value = $hypothesis|set:"insight":($insight_summary)
+        }
+
+        var.update $row {
+          value = $row|set:"experiment_count":($experiment_count)
+        }
+
         var.update $items {
-          value = $items|push:($hypothesis|set:"insight":{id: $hypothesis.insight_id, statement: $hypothesis.insight_statement}|set:"experiment_count":$experiment_count)
+          value = $items|push:($row)
         }
       }
     }

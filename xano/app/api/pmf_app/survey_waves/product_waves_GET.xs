@@ -39,8 +39,16 @@ query "products/{product_id}/survey-waves" verb=GET {
           return = {type: "count"}
         } as $eligible
 
+        var $row {
+          value = $wave|set:"state":($state)
+        }
+
+        var.update $row {
+          value = $row|set:"eligible_count":($eligible)
+        }
+
         var.update $items {
-          value = $items|push:($wave|set:"state":$state|set:"eligible_count":$eligible)
+          value = $items|push:($row)
         }
       }
     }

@@ -163,7 +163,9 @@ def main():
         for bad, why in ((r"\bisolation\s*=", "transaction isolation is rejected by the validator"),
                          (r"db\.direct_query", "raw SQL is excluded (R3.3)"),
                          (r"db\.truncate|db\.bulk\.delete", "bulk destructive operation"),
-                         (r"api_group\s*=\s*\"Authentication\"", "auth endpoints must not be modified (U10)")):
+                         (r"api_group\s*=\s*\"Authentication\"", "auth endpoints must not be modified (U10)"),
+                         (r"\|set:[^|(\n]*\|set:", "chained |set: filters are ambiguous (greedy binding); use sequential var.update"),
+                         (r"\|set:\"\w+\":[^()\n]*(==|!=|<=|>=| > | < )", "comparison inside a |set: argument must be parenthesized")):
             if re.search(bad, s):
                 err(rel, why)
         for code in re.findall(r'error = "([^"]*)"', s):

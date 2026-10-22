@@ -72,7 +72,19 @@ query "customers/{customer_id}" verb=GET {
         }
       }
     }
+
+    var $out {
+      value = $customer|set:"segment":($segment)
+    }
+
+    var.update $out {
+      value = $out|set:"interviews":($interviews)
+    }
+
+    var.update $out {
+      value = $out|set:"participations":($participations)
+    }
   }
 
-  response = $customer|set:"segment":$segment|set:"interviews":$interviews|set:"participations":$participations
+  response = $out
 }

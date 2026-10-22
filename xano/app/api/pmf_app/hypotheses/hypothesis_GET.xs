@@ -21,7 +21,19 @@ query "hypotheses/{hypothesis_id}" verb=GET {
       sort = {created_at: "asc"}
       return = {type: "list"}
     } as $experiments
+
+    var $insight_summary {
+      value = {id: $access.insight.id, statement: $access.insight.statement, type: $access.insight.type, review_status: $access.insight.review_status}
+    }
+
+    var $out {
+      value = $access.record|set:"insight":($insight_summary)
+    }
+
+    var.update $out {
+      value = $out|set:"experiments":($experiments)
+    }
   }
 
-  response = $access.record|set:"insight":{id: $access.insight.id, statement: $access.insight.statement, type: $access.insight.type, review_status: $access.insight.review_status}|set:"experiments":$experiments
+  response = $out
 }

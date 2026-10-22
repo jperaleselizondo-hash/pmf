@@ -44,7 +44,15 @@ query "insights/{insight_id}" verb=GET {
       return = {type: "list"}
       output = ["id", "statement", "status", "priority"]
     } as $hypotheses
+
+    var $out {
+      value = $access.record|set:"evidence":($evidence)
+    }
+
+    var.update $out {
+      value = $out|set:"hypotheses":($hypotheses)
+    }
   }
 
-  response = $access.record|set:"evidence":$evidence|set:"hypotheses":$hypotheses
+  response = $out
 }

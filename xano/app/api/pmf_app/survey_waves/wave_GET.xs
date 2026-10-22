@@ -29,7 +29,23 @@ query "survey-waves/{wave_id}" verb=GET {
     function.run "pmf/report/count_wave" {
       input = {rows: $rows}
     } as $funnel
+
+    var $locked {
+      value = $funnel.eligible_count > 0
+    }
+
+    var $out {
+      value = $access.record|set:"state":($state)
+    }
+
+    var.update $out {
+      value = $out|set:"funnel":($funnel)
+    }
+
+    var.update $out {
+      value = $out|set:"definition_locked":($locked)
+    }
   }
 
-  response = $access.record|set:"state":$state|set:"funnel":$funnel|set:"definition_locked":$funnel.eligible_count > 0
+  response = $out
 }
