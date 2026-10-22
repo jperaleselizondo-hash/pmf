@@ -11,12 +11,12 @@ The idea combines Eric Migicovsky's Y Combinator talk on customer interviews wit
 ## Current status
 - GitHub repository: https://github.com/jperaleselizondo-hash/pmf (private).
 - **Design baseline:** initial system logic and technology-independent 10-table model are documented.
-- **Implementation:** not started. No Xano tables, APIs, credentials, WeWeb pages, or MCP edits have been made for this project.
-- **Next task:** inspect available Xano/WeWeb workspaces and MCP access, then propose a physical Xano schema implementing the documented logical model. Obtain approval before backend or frontend mutations.
+- **Implementation:** user has created a Xano workspace named `pmf` (not independently inspected); schema/API/auth are not implemented or verified. No frontend is built and no MCP edits have been made for this project.
+- **Next task:** read-only inspection of the Xano workspace named `pmf` and its available Claude Code/MCP access, then propose a physical Xano schema implementing the documented logical model. Frontend inspection/selection can wait. Obtain approval before any changes.
 
 ## Approved direction
 - **Audience:** one owner/operator for the first release; not a multi-tenant SaaS.
-- **Stack:** Xano database/auth/backend + WeWeb frontend.
+- **Stack:** Xano database/auth/backend is selected; frontend is **undecided** between WeWeb and a coded frontend deployed on Vercel. Do not start frontend work or commit to a framework yet.
 - **Developer workflow:** discuss scope with ChatGPT; Claude Code in Cursor inspects docs and tools, proposes a narrow change, executes when approved, and reports evidence; human reviews and decides what to do next.
 - **Data:** start with manual entry of customers, interviews, survey participation/responses, insights, hypotheses, and experiments.
 - **Model:** 10 business tables across Market, Research, Intelligence, Validation. Xano's required authentication infrastructure is outside the 10.
@@ -42,4 +42,4 @@ From the private web UI, the owner can create a product/segment/customer, record
 Do not implement organization accounts, automated surveys, product event ingestion, monetization, background AI agents, or public collaboration in V1. Future phases can integrate analytics and commercial validation while preserving the evidence → hypothesis → experiment chain.
 
 ## For any new Claude session
-Read this file, [CLAUDE.md](CLAUDE.md), [PROJECT_STATUS](docs/PROJECT_STATUS.md), [DECISION_LOG](docs/DECISION_LOG.md), and whichever functional spec is relevant. Compare repository statements with actual connected Xano/WeWeb environments rather than assuming that documentation implies deployment.
+Read this file, [CLAUDE.md](CLAUDE.md), [PROJECT_STATUS](docs/PROJECT_STATUS.md), [DECISION_LOG](docs/DECISION_LOG.md), and whichever functional spec is relevant. Compare repository statements with actual connected Xano resources; the frontend (WeWeb vs coded app on Vercel) is intentionally undecided. Do not assume that documentation implies deployment.

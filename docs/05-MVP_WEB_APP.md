@@ -3,7 +3,7 @@
 ## Target user and navigation
 One authenticated owner. No public content or tenant administration.
 
-Suggested WeWeb navigation:
+Suggested frontend navigation (implementation technology TBD):
 - Overview
 - Market (Products / Segments)
 - Customers
