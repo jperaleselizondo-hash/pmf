@@ -21,7 +21,6 @@ This records design choices, not deployed features.
 | D-015 | 2026-10-22 | Market tables applied to `pmf` (ID 2) branch `v1` via temporary direct CLI push: dry-run → user-run interactive partial push → push disabled → read-back | Verified: exactly 3 tables created, existing `user`/auth resources byte-identical, server schema matches `xano/market/table/*.xs`; `allow_push` back to false |
 | D-016 | 2026-10-22 | Git `xano/` XanoScript files are the schema source of truth and keep server-assigned `guid` lines | GUIDs let later partial pushes target the same tables instead of creating duplicates; server-side formatting differences (description→comment) are cosmetic |
 | D-017 | 2026-10-22 | Market physical schema conventions: plural table names; `text? x?` for nullable optional fields; `int … { table = … }` references (metadata only); `created_at?=now` and API-maintained `updated_at`; case-sensitive unique segment names; `sensitive=true` on customer `name`/`email` | Native Xano constructs confirmed by validator and server dry-run; integrity beyond types/enums/unique indexes is enforced in APIs |
-
 | D-018 | 2026-10-22 | Research survey `started_at` nullable | Permit wave draft creation; API requires start before any survey response |
 | D-019 | 2026-10-22 | Interview `notes` nullable | Transcript or alternatives/problem context may be original evidence; require meaningful content before citation |
 | D-020 | 2026-10-22 | Raw interview and survey answers remain untrimmed | Preserve first-hand wording; trim survey configuration fields instead |
