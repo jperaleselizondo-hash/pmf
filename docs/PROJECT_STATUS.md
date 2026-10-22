@@ -1,8 +1,8 @@
 # Project Status
 
 **Date:** 2026-10-22
-**Milestone:** Phase 1 workspace inspection verified; auth preflight next
-**Product build:** Xano workspace `pmf` (ID 2) inspected by Claude; no PMF business tables, APIs or frontend implemented
+**Milestone:** Phase 2 preparation — owner created; signup lockdown and first schema batch pending
+**Product build:** Xano workspace `pmf` (ID 2) inspected by Claude; owner user created and auth endpoints reported working by user; no PMF business tables, business APIs or frontend implemented
 **Production:** No PMF Engine application deployed
 
 ## Completed / documented
@@ -45,8 +45,14 @@
 - A future designated-owner check must protect every business endpoint; `products.owner_user_id` alone does not prevent another authenticated identity from creating products.
 - **No application changes have been authorized or performed.** Record-only status update.
 
+## Owner account update (reported by user, 2026-10-22)
+- User reports creating the PMF application owner account and successfully testing auth endpoints. The owner's numeric Xano user ID is **not** recorded here and must be verified locally through `auth/me` before future authorization logic is built.
+- Public `auth/signup` **has not yet been confirmed disabled**. Lock down its **External Access** setting before business APIs are introduced; independently verify external rejection and successful owner login.
+- User successfully synchronized local `pmf` repository with GitHub `main` at `f705787` before this update.
+- User wants to proceed with table implementation. First target: `products`, `segments`, `customers`, schema only, no test data or business APIs. CLI `allow_push` remains off until a separate controlled authorization.
+
 ## One next action
-Confirm user-row count and owner identity in Xano's UI, then verify owner login. After that, separately authorize disabling **External Access** on the `auth/signup` endpoint. Do not delete it. Fix Claude's local Git sync before committing documentation. Do not enable CLI push or create business tables yet.
+After reversible signup lockdown, have Claude prepare the exact local XanoScript definitions for the three Market tables, with validated field types/indexes and no records/APIs. Review an isolated CLI dry-run/diff before allowing any actual push. Do not enable CLI push, perform broad sync/delete, or touch another workspace without explicit approval.
 
 ## Approved-stack status
 Xano selected; frontend still undecided between WeWeb and a coded frontend deployed on Vercel.
