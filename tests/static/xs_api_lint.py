@@ -165,7 +165,8 @@ def main():
                          (r"db\.truncate|db\.bulk\.delete", "bulk destructive operation"),
                          (r"api_group\s*=\s*\"Authentication\"", "auth endpoints must not be modified (U10)"),
                          (r"\|set:[^|(\n]*\|set:", "chained |set: filters are ambiguous (greedy binding); use sequential var.update"),
-                         (r"\|set:\"\w+\":[^()\n]*(==|!=|<=|>=| > | < )", "comparison inside a |set: argument must be parenthesized")):
+                         (r"\|set:\"\w+\":[^()\n]*(==|!=|<=|>=| > | < )", "comparison inside a |set: argument must be parenthesized"),
+                         (r"\$data\.\w", "patch_data omits null keys and dotted access errors on a missing key; use $data|get:\"key\"")):
             if re.search(bad, s):
                 err(rel, why)
         for code in re.findall(r'error = "([^"]*)"', s):

@@ -31,9 +31,9 @@ query "products/{product_id}/survey-waves" verb=POST {
     db.add survey_waves {
       data = {
         product_id           : $product.id
-        name                 : $data.name
-        eligibility_rule     : $data.eligibility_rule
-        questionnaire_version: $data.questionnaire_version
+        name                 : $data|get:"name"
+        eligibility_rule     : $data|get:"eligibility_rule"
+        questionnaire_version: $data|get:"questionnaire_version"
         started_at           : $input.started_at
         closed_at            : null
       }

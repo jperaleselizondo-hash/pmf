@@ -27,11 +27,11 @@ query "products" verb=POST {
     db.add products {
       data = {
         owner_user_id         : $auth.id
-        name                  : $data.name
-        description           : $data.description
-        core_value            : $data.core_value
-        activation_definition : $data.activation_definition
-        value_event_definition: $data.value_event_definition
+        name                  : $data|get:"name"
+        description           : $data|get:"description"
+        core_value            : $data|get:"core_value"
+        activation_definition : $data|get:"activation_definition"
+        value_event_definition: $data|get:"value_event_definition"
       }
     } as $product
   }

@@ -43,9 +43,9 @@ query "insights/{insight_id}/hypotheses" verb=POST {
         db.add hypotheses {
           data = {
             insight_id      : $input.insight_id
-            statement       : $data.statement
-            expected_outcome: $data.expected_outcome
-            success_metric  : $data.success_metric
+            statement       : $data|get:"statement"
+            expected_outcome: $data|get:"expected_outcome"
+            success_metric  : $data|get:"success_metric"
             priority        : $input.priority ?? "medium"
             status          : "proposed"
           }

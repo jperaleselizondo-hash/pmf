@@ -27,8 +27,12 @@ query "products/{product_id}/segments" verb=POST {
       }
     } as $data
 
+    var $name {
+      value = $data|get:"name"
+    }
+
     db.query segments {
-      where = $db.segments.product_id == $product.id && $db.segments.name == $data.name
+      where = $db.segments.product_id == $product.id && $db.segments.name == $name
       return = {type: "exists"}
     } as $duplicate
 
@@ -40,9 +44,9 @@ query "products/{product_id}/segments" verb=POST {
     db.add segments {
       data = {
         product_id : $product.id
-        name       : $data.name
-        description: $data.description
-        criteria   : $data.criteria
+        name       : $name
+        description: $data|get:"description"
+        criteria   : $data|get:"criteria"
       }
     } as $segment
   }

@@ -62,8 +62,8 @@ query "hypotheses/{hypothesis_id}/experiments" verb=POST {
         db.add experiments {
           data = {
             hypothesis_id  : $input.hypothesis_id
-            name           : $data.name
-            method         : $data.method
+            name           : $data|get:"name"
+            method         : $data|get:"method"
             started_at     : $data|get:"started_at"
             ended_at       : $data|get:"ended_at"
             baseline       : $data|get:"baseline"

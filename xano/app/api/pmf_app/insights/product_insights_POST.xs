@@ -46,7 +46,7 @@ query "products/{product_id}/insights" verb=POST {
         product_id   : $product.id
         segment_id   : $input.segment_id
         type         : $input.type
-        statement    : $data.statement
+        statement    : $data|get:"statement"
         confidence   : $input.confidence ?? "low"
         review_status: "draft"
       }
