@@ -205,11 +205,60 @@ class MetaClient:
             raise UnsafeEnvironment(f"metadata {path}: fetched {len(rows)} rows but itemsTotal is {total}")
         return rows
 
+    MAX_LISTING_PAGES = 50
+    LISTING_PER_PAGE = 500
+
+    def _listing(self, path, per_page=500):
+        """Table listings (verified 2026-10-23): pages carry curPage/nextPage/prevPage but no itemsTotal.
+
+        Fails closed on non-object pages, malformed items, non-integer or duplicate ids, a curPage that is not
+        the requested page, a prevPage inconsistent with it, a nextPage other than null or page+1, an empty
+        page that claims a next page, or more than MAX_LISTING_PAGES pages (non-terminating pagination).
+        If a listing ever includes itemsTotal, the strict content-page rules apply instead.
+        Limitation: without itemsTotal, truncation exactly at a page boundary (a full page with nextPage null)
+        is indistinguishable from the end; resolve_tables() therefore also requires every expected table.
+        """
+        rows, seen, page = [], set(), 1
+        while True:
+            if page > self.MAX_LISTING_PAGES:
+                raise UnsafeEnvironment(f"metadata {path}: pagination did not terminate")
+            data = self._get_json(path, {"page": page, "per_page": per_page})
+            if isinstance(data, dict) and "itemsTotal" in data:
+                return self._all(path, per_page)
+            if not isinstance(data, dict):
+                raise UnsafeEnvironment(f"metadata {path}: page is not an object")
+            items = data.get("items")
+            if not isinstance(items, list) or not all(isinstance(r, dict) for r in items):
+                raise UnsafeEnvironment(f"metadata {path}: missing or malformed items")
+            cur, nxt, prev = data.get("curPage"), data.get("nextPage"), data.get("prevPage")
+            if isinstance(cur, bool) or cur != page:
+                raise UnsafeEnvironment(f"metadata {path}: curPage {cur!r} is not the requested page {page}")
+            if prev != (None if page == 1 else page - 1):
+                raise UnsafeEnvironment(f"metadata {path}: prevPage {prev!r} inconsistent with page {page}")
+            if nxt is not None and (isinstance(nxt, bool) or nxt != page + 1):
+                raise UnsafeEnvironment(f"metadata {path}: nextPage {nxt!r} is not null or {page + 1}")
+            if len(items) > per_page:
+                raise UnsafeEnvironment(f"metadata {path}: page larger than requested")
+            if nxt is not None and len(items) < per_page:
+                raise UnsafeEnvironment(f"metadata {path}: short page {page} claims a next page")
+            for r in items:
+                if isinstance(r.get("id"), bool) or not isinstance(r.get("id"), int):
+                    raise UnsafeEnvironment(f"metadata {path}: row without an integer id")
+                if r["id"] in seen:
+                    raise UnsafeEnvironment(f"metadata {path}: duplicate id {r['id']} (repeated page?)")
+                seen.add(r["id"])
+            rows.extend(items)
+            if nxt is None:
+                return rows
+            page = nxt
+
     def resolve_tables(self):
-        tables = self._all(f"/workspace/{WORKSPACE_ID}/table")
+        tables = self._listing(f"/workspace/{WORKSPACE_ID}/table", self.LISTING_PER_PAGE)
         found = {}
         for t in tables:
-            found.setdefault(t.get("name"), []).append(t["id"])
+            if not isinstance(t.get("name"), str):
+                raise UnsafeEnvironment("metadata table listing: table without a name")
+            found.setdefault(t["name"], []).append(t["id"])
         for name in BUSINESS_TABLES + ["user"]:
             if len(found.get(name, [])) != 1:
                 raise UnsafeEnvironment(f"table `{name}` not found exactly once in workspace 2")

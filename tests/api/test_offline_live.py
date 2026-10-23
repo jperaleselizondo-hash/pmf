@@ -59,12 +59,13 @@ class FakeMeta:
     `delete_status` is the status returned by DELETE (the row is removed for 200/204 unless `sticky`).
     """
 
-    def __init__(self, rows=None, faults=None, delete_status=200, sticky=()):
+    def __init__(self, rows=None, faults=None, delete_status=200, sticky=(), listing_total=False):
         self.rows = {name: [dict(r) for r in (rows or {}).get(name, [])] for name in TABLE_IDS}
         self.log = []
         self.faults = faults
         self.delete_status = delete_status
         self.sticky = set(sticky)
+        self.listing_total = listing_total
 
     @staticmethod
     def page(items, page, per):
@@ -73,11 +74,23 @@ class FakeMeta:
         return {"items": chunk, "itemsReceived": len(chunk), "curPage": page, "nextPage": nxt,
                 "prevPage": page - 1 or None, "offset": (page - 1) * per, "perPage": per, "itemsTotal": len(items)}
 
+    @staticmethod
+    def observed_listing(items, page, per):
+        """Shape of GET /workspace/{id}/table observed on 2026-10-23: no itemsTotal."""
+        chunk = items[(page - 1) * per: page * per]
+        nxt = page + 1 if page * per < len(items) else None
+        return {"curPage": page, "nextPage": nxt, "prevPage": page - 1 or None, "items": chunk}
+
     def respond(self, method, path, q):
         segs = path.strip("/").split("/")
         page, per = int(q.get("page", 1)), int(q.get("per_page", 50))
         if len(segs) == 3:
-            return 200, self.page([{"id": i, "name": n} for n, i in TABLE_IDS.items()], page, per)
+            tables = [{"id": i, "name": n, "guid": f"g{i}", "auth": n == "user", "description": "", "schema": [],
+                       "index": [], "tag": [], "docs": "", "autocomplete": "", "xanoscript": "",
+                       "created_at": 0, "updated_at": 0} for n, i in TABLE_IDS.items()]
+            if self.listing_total:
+                return 200, self.page(tables, page, per)
+            return 200, self.observed_listing(tables, page, per)
         name = next(n for n, i in TABLE_IDS.items() if i == int(segs[3]))
         if len(segs) == 6:
             row_id = int(segs[5])
@@ -266,7 +279,7 @@ class MetaFailClosed(unittest.TestCase):
         for fault in (lambda m, p, q, st, b: (st, {"items": b["items"]}) if p.endswith("/table") else (st, b),
                       lambda m, p, q, st, b: (st, b["items"]) if p.endswith("/table") else (st, b),
                       lambda m, p, q, st, b: (st, dict(b, itemsTotal=b["itemsTotal"] + 1)) if p.endswith("/table") else (st, b)):
-            meta = self.client(fault)
+            meta = live.MetaClient("t", FakeMeta(synthetic_rows(), faults=fault, listing_total=True))
             self.assert_stops(meta.resolve_tables)
 
     def test_delete_requires_confirmed_absence(self):
@@ -305,6 +318,86 @@ class MetaFailClosed(unittest.TestCase):
                                          transport=lambda *a: calls.append(a), cli_runner=fake_cli(),
                                          meta_client=live.MetaClient("t", fake), out=lambda *_: None)
         self.assertEqual((code, calls), (2, []))
+
+
+class TableListing(unittest.TestCase):
+    """Observed table-listing format (no itemsTotal) must parse; any malformed listing must fail closed."""
+
+    PATH = "/workspace/2/table"
+
+    def listing_fault(self, mutate):
+        def fault(method, path, q, status, body):
+            if method == "GET" and path == self.PATH and isinstance(body, dict):
+                body = dict(body)
+                mutate(body, int(q.get("page", 1)))
+            return status, body
+        return fault
+
+    def test_observed_shape_resolves_all_tables(self):
+        meta = live.MetaClient("t", FakeMeta(synthetic_rows()))
+        ids = meta.resolve_tables()
+        self.assertEqual(set(ids), set(live.BUSINESS_TABLES) | {"user"})
+
+    def test_listing_with_items_total_still_strict(self):
+        meta = live.MetaClient("t", FakeMeta(synthetic_rows(), listing_total=True))
+        self.assertEqual(len(meta.resolve_tables()), 11)
+        bad = live.MetaClient("t", FakeMeta(synthetic_rows(), listing_total=True,
+                                            faults=self.listing_fault(lambda b, p: b.update(itemsTotal=99))))
+        with self.assertRaises(UnsafeEnvironment):
+            bad.resolve_tables()
+
+    def test_multi_page_observed_listing(self):
+        meta = live.MetaClient("t", FakeMeta(synthetic_rows()))
+        rows = meta._listing(self.PATH, per_page=2)
+        self.assertEqual(len(rows), 11)
+        self.assertEqual(len({r["id"] for r in rows}), 11)
+
+    def test_malformed_listings_fail_closed(self):
+        cases = {
+            "not an object": lambda b, p: b.clear() or b.update(items=None),
+            "items missing": lambda b, p: b.pop("items"),
+            "items not a list": lambda b, p: b.update(items={}),
+            "item not an object": lambda b, p: b.update(items=["x"]),
+            "string id": lambda b, p: b["items"].__setitem__(0, dict(b["items"][0], id="10")),
+            "bool id": lambda b, p: b["items"].__setitem__(0, dict(b["items"][0], id=True)),
+            "missing id": lambda b, p: b["items"].__setitem__(0, {k: v for k, v in b["items"][0].items() if k != "id"}),
+            "curPage missing": lambda b, p: b.pop("curPage"),
+            "curPage wrong": lambda b, p: b.update(curPage=p + 1),
+            "prevPage wrong": lambda b, p: b.update(prevPage=7),
+            "nextPage skips": lambda b, p: b.update(nextPage=p + 2) if b.get("nextPage") else None,
+            "nextPage repeats page": lambda b, p: b.update(nextPage=p),
+            "short page claims next": lambda b, p: b.update(items=b["items"][:1], nextPage=p + 1),
+            "truncated (stops early)": lambda b, p: b.update(nextPage=None) if p == 2 else None,
+            "duplicate id across pages": lambda b, p: b["items"].__setitem__(0, dict(b["items"][0], id=10)) if p == 2 else None,
+            "table without name": lambda b, p: b["items"].__setitem__(0, dict(b["items"][0], name=None)),
+        }
+        for label, mutate in cases.items():
+            for per_page in (500, 2):
+                with self.subTest(label=label, per_page=per_page):
+                    meta = live.MetaClient("t", FakeMeta(synthetic_rows(), faults=self.listing_fault(mutate)))
+                    meta.LISTING_PER_PAGE = per_page
+                    if per_page == 500 and label in ("nextPage skips", "truncated (stops early)", "duplicate id across pages"):
+                        continue  # only meaningful with several pages
+                    with self.assertRaises(UnsafeEnvironment):
+                        meta.resolve_tables()
+
+    def test_nonterminating_pagination(self):
+        class Endless(FakeMeta):
+            def respond(self, method, path, q):
+                page = int(q.get("page", 1))
+                return 200, {"curPage": page, "nextPage": page + 1, "prevPage": page - 1 or None,
+                             "items": [{"id": page * 10 + k, "name": f"t{page}-{k}"} for k in range(2)]}
+        meta = live.MetaClient("t", Endless())
+        with self.assertRaises(UnsafeEnvironment):
+            meta._listing(self.PATH, per_page=2)
+
+    def test_missing_or_duplicate_tables(self):
+        drop = self.listing_fault(lambda b, p: b.update(items=[t for t in b["items"] if t["name"] != "experiments"]))
+        with self.assertRaises(UnsafeEnvironment):
+            live.MetaClient("t", FakeMeta(synthetic_rows(), faults=drop)).resolve_tables()
+        dup = self.listing_fault(lambda b, p: b["items"].append(dict(b["items"][0], id=999)))
+        with self.assertRaises(UnsafeEnvironment):
+            live.MetaClient("t", FakeMeta(synthetic_rows(), faults=dup)).resolve_tables()
 
 
 class SyntheticVerification(unittest.TestCase):
