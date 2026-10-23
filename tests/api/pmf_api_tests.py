@@ -648,7 +648,12 @@ def i02(s):
 def i03(s):
     ok(s.owner.call("DELETE", f"evidence/{s.fx['EV_DUP']['id']}"))
     ok(s.owner.call("DELETE", f"evidence/{s.fx['EV_CON']['id']}"))
+    before = ok(s.owner.call("GET", f"insights/{s.fx['INS']['id']}"))["updated_at"]
     rejected(s.owner.call("DELETE", f"evidence/{s.fx['EV_SUP']['id']}"), 400, "LAST_EVIDENCE_OF_REVIEWED_INSIGHT")
+    # T01 rollback probe: pmf/lock/insight writes updated_at inside db.transaction, so a rejected request must
+    # leave it unchanged; a changed value means the transaction did not roll back and the row lock is unproven.
+    after = ok(s.owner.call("GET", f"insights/{s.fx['INS']['id']}"))["updated_at"]
+    expect(after == before, f"T01: rejected delete changed insights.updated_at ({before!r} -> {after!r}); db.transaction did not roll back")
 
 
 @case("V01", "hypotheses require a reviewed insight")
