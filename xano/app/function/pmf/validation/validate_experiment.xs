@@ -6,6 +6,12 @@ function "pmf/validation/validate_experiment" {
   }
 
   stack {
+    // Fail closed: a non-object state (e.g. text) would make every `|get:` below null and silently pass.
+    precondition ($input.experiment|is_object) {
+      error_type = "inputerror"
+      error = "INVALID_INPUT: experiment state must be an object"
+    }
+
     // Optional fields are read with `|get:` (null for a missing key): callers may pass partial states, and the
     // server may store the caller's state object in expression mode.
     var $started_at {
@@ -109,6 +115,13 @@ function "pmf/validation/validate_experiment" {
     input = {experiment: {started_at: 1000, ended_at: 2000, observed_result: "12 of 20", conclusion: null, decision: "adopt"}}
     expect.to_throw {
       exception = "EXPERIMENT_DECISION: a decision requires a conclusion"
+    }
+  }
+
+  test "non-object state is rejected" {
+    input = {experiment: "{started_at: 2000, ended_at: 1000}"}
+    expect.to_throw {
+      exception = "INVALID_INPUT: experiment state must be an object"
     }
   }
 

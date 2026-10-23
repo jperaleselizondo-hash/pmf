@@ -45,12 +45,11 @@ query "hypotheses/{hypothesis_id}/experiments" verb=POST {
       }
     } as $data
 
-    var $state {
-      value = {started_at: $data|get:"started_at", ended_at: $data|get:"ended_at", observed_result: $data|get:"observed_result", conclusion: $data|get:"conclusion", decision: $data|get:"decision"}
-    }
-
+    // Runtime fix (2026-10-23): the server stored the former inline `$state` object in expression mode and the
+    // validator received a non-object, so every rule passed (V02/V03). The patch_data object is passed as is;
+    // validate_experiment reads each field with `|get:` (omitted = null).
     function.run "pmf/validation/validate_experiment" {
-      input = {experiment: $state}
+      input = {experiment: $data}
     } as $valid
 
     db.transaction {

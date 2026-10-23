@@ -174,8 +174,15 @@
 - Deployment inventory vs live (comparator: 9 unexplained = the 9 intended; all others equivalent/known gates): functions `pmf/validation/validate_experiment`, `pmf/util/patch_data`, `pmf/lock/insight`, `pmf/lock/wave`; endpoints `POST survey-waves/{wave_id}/status`, `GET products/{product_id}/overview`, `GET products/{product_id}/lookups`, `GET survey-waves/{wave_id}/participations`, `PATCH products/{product_id}`.
 - Wave-close root cause is a strong hypothesis (`$input.closed_at ?? now` evaluated so that `<= now` fails), not proven: bare `now` comparisons were verified correct on the server via `function run pmf/survey/wave_state`, and the server clock matches.
 
+## Phase 3 final remediation deployed and re-run (2026-10-23)
+- Dry-run (exit 0) listed exactly the 9 intended UPDATEs; owner push; read-back: exactly those 9 changed, GUIDs unchanged, comparator EQUIVALENT 77 · RUNTIME 6 · UNEXPLAINED 0. `allow_push` still **true** afterwards (owner must disable).
+- Server unit tests: **65 passed, 0 failed**.
+- HTTP suite (`--trials 25`): **58 passed, 6 failed, 3 manual**. Now passing: **C01, C02, C03, C04** (strict serialized outcomes, 25 trials each), I03 incl. T01 rollback + positive control, W08/W09/R05 (wave close), P06, P09, pagination. Concurrency evidence: the same harness detected 20/25 and 21/25 violations under the old lock, so the pass is meaningful for the observed trials; it is not a formal proof and no live negative control was run.
+- Remaining failures: V02, V03 (invalid experiments accepted, 200), V04, V05, X01, X02 (cascade: unexpected experiments/`EXP` missing). Cause verified with `function run`: `validate_experiment` rejects object input correctly but returns true for a text value; the server stores the endpoint's inline `$state` object in expression mode, so the validator received a non-object. Fix prepared (not deployed): `POST hypotheses/{id}/experiments` passes the `patch_data` object directly; `validate_experiment` rejects non-object state (fail closed).
+- Cleanup: 295 verified synthetic rows deleted; ten tables zero. Test user id 2 and cleanup token kept for the final re-run.
+
 ## One next action
-Owner temporarily enables direct push; one coordinated dry-run (expected 9 UPDATEs: 4 functions, 5 endpoints), owner push, server unit tests, full HTTP suite, cleanup.
+Dry-run expecting exactly 2 UPDATEs (`pmf/validation/validate_experiment`, `POST hypotheses/{hypothesis_id}/experiments`), owner push, unit tests, full HTTP suite, cleanup incl. test user, revoke tokens.
 
 ## Approved-stack status
 Xano selected; frontend still undecided between WeWeb and a coded frontend deployed on Vercel.
