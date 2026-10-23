@@ -25,8 +25,15 @@ function "pmf/lock/insight" {
       field_value = $input.insight_id
       data = {updated_at: now}
     } as $locked
+
+    // Re-read after the write: while this transaction holds the row lock, the read returns the latest committed
+    // state (no other writer of this row can commit meanwhile), so callers never check invariants on a stale snapshot.
+    db.get insights {
+      field_name = "id"
+      field_value = $input.insight_id
+    } as $current
   }
 
-  response = $locked
+  response = $current
   guid = "PIV8HNwZ6PmQsORtg4xNTf-w8ic"
 }

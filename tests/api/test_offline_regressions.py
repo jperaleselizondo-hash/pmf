@@ -138,5 +138,57 @@ class Regressions(unittest.TestCase):
         self.assertIn("explicit clear", str(ctx.exception))
 
 
+class StrictConcurrencyOutcomes(unittest.TestCase):
+    """C02/C04 outcome checks: only the single serialized outcome passes; 500s and ambiguity fail."""
+    CTX = {"insight": 9, "evidence": [11, 12]}
+
+    @staticmethod
+    def r(status, message=None, body=None):
+        return Response(status, body if body is not None else ({"message": message} if message else {"deleted": True}))
+
+    def detail(self, status, evidence_ids, hyps=()):
+        return {"review_status": status, "evidence": [{"id": i, "relationship": "supports"} for i in evidence_ids],
+                "hypotheses": [{"id": h} for h in hyps]}
+
+    def test_c02_serialized_outcome_passes(self):
+        last = "LAST_EVIDENCE_OF_REVIEWED_INSIGHT: move the insight back to draft"
+        self.assertIsNone(suite.c02_outcome(self.CTX, [self.r(200), self.r(400, last)], self.detail("reviewed", [12])))
+        self.assertIsNone(suite.c02_outcome(self.CTX, [self.r(400, last), self.r(200)], self.detail("reviewed", [11])))
+
+    def test_c02_failures(self):
+        last = "LAST_EVIDENCE_OF_REVIEWED_INSIGHT: x"
+        cases = [
+            ([self.r(200), self.r(200)], self.detail("reviewed", [])),                       # both succeed (observed live)
+            ([self.r(200), self.r(500, "Unable to locate var: x")], self.detail("reviewed", [12])),  # HTTP 500
+            ([self.r(500, "boom"), self.r(500, "boom")], self.detail("reviewed", [11, 12])),
+            ([self.r(400, last), self.r(400, last)], self.detail("reviewed", [11, 12])),     # both fail
+            ([self.r(200), self.r(400, "NOT_FOUND: evidence")], self.detail("reviewed", [12])),  # wrong reason
+            ([self.r(200), self.r(400, last)], self.detail("reviewed", [11])),               # wrong row kept
+            ([self.r(200), self.r(400, last)], self.detail("draft", [12])),                  # status changed
+        ]
+        for rs, detail in cases:
+            self.assertIsNotNone(suite.c02_outcome(self.CTX, rs, detail), (rs, detail))
+
+    def test_c04_serialized_outcomes_pass(self):
+        made = self.r(200, body={"id": 5})
+        self.assertIsNone(suite.c04_outcome([made, self.r(400, "INSIGHT_HAS_HYPOTHESES: x")], self.detail("reviewed", [1], [5])))
+        self.assertIsNone(suite.c04_outcome([self.r(400, "INSIGHT_NOT_REVIEWED: x"), self.r(200, body={"id": 9})], self.detail("draft", [1])))
+
+    def test_c04_failures(self):
+        made = self.r(200, body={"id": 5})
+        cases = [
+            ([made, self.r(200, body={"id": 9})], self.detail("draft", [1], [5])),           # both succeed (observed live)
+            ([made, self.r(500, "Unable to locate var: x")], self.detail("reviewed", [1], [5])),  # HTTP 500
+            ([self.r(500, "boom"), self.r(200, body={"id": 9})], self.detail("draft", [1])),
+            ([self.r(400, "INSIGHT_NOT_REVIEWED: x"), self.r(400, "INSIGHT_HAS_HYPOTHESES: x")], self.detail("reviewed", [1])),
+            ([made, self.r(400, "NO_STATUS_CHANGE: x")], self.detail("reviewed", [1], [5])),     # wrong reason
+            ([self.r(400, "INSIGHT_HAS_HYPOTHESES: x"), self.r(200, body={"id": 9})], self.detail("draft", [1])),
+            ([made, self.r(400, "INSIGHT_HAS_HYPOTHESES: x")], self.detail("draft", [1], [5])),  # final state wrong
+            ([self.r(400, "INSIGHT_NOT_REVIEWED: x"), self.r(200, body={"id": 9})], self.detail("draft", [1], [5])),
+        ]
+        for rs, detail in cases:
+            self.assertIsNotNone(suite.c04_outcome(rs, detail), (rs, detail))
+
+
 if __name__ == "__main__":
     unittest.main()

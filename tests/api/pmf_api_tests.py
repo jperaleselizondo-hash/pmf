@@ -85,6 +85,9 @@ SAMPLE_BODIES = {
 }
 
 
+T01_PAUSE = 1.1  # seconds; > 1 s so second-precision timestamps still differ
+
+
 class Failure(AssertionError):
     pass
 
@@ -646,13 +649,24 @@ def i02(s):
 
 @case("I03", "the last evidence of a reviewed insight cannot be deleted")
 def i03(s):
+    def stamp():
+        return ok(s.owner.call("GET", f"insights/{s.fx['INS']['id']}"))["updated_at"]
+
+    # T01 positive control: a successful child write must move insights.updated_at (pmf/lock/insight really
+    # writes and the change is observable). The pauses exceed one second so a coarse timestamp precision
+    # cannot make the comparisons inconclusive.
+    u0 = stamp()
+    time.sleep(T01_PAUSE)
     ok(s.owner.call("DELETE", f"evidence/{s.fx['EV_DUP']['id']}"))
+    u1 = stamp()
+    expect(u1 is not None and u1 != u0, f"T01 control: successful delete did not move insights.updated_at ({u0!r} -> {u1!r})")
     ok(s.owner.call("DELETE", f"evidence/{s.fx['EV_CON']['id']}"))
-    before = ok(s.owner.call("GET", f"insights/{s.fx['INS']['id']}"))["updated_at"]
+    before = stamp()
+    time.sleep(T01_PAUSE)
     rejected(s.owner.call("DELETE", f"evidence/{s.fx['EV_SUP']['id']}"), 400, "LAST_EVIDENCE_OF_REVIEWED_INSIGHT")
-    # T01 rollback probe: pmf/lock/insight writes updated_at inside db.transaction, so a rejected request must
-    # leave it unchanged; a changed value means the transaction did not roll back and the row lock is unproven.
-    after = ok(s.owner.call("GET", f"insights/{s.fx['INS']['id']}"))["updated_at"]
+    # T01 rollback probe: the lock's write happened inside db.transaction, so a rejected request must leave the
+    # value unchanged. This shows rollback only; it is NOT proof of serialization (C02/C04 test that).
+    after = stamp()
     expect(after == before, f"T01: rejected delete changed insights.updated_at ({before!r} -> {after!r}); db.transaction did not roll back")
 
 
@@ -732,6 +746,40 @@ def require_gate(result):
     expect(message is None, message)
 
 
+def c02_outcome(ctx, rs, detail):
+    """Strict C02 outcome: exactly one delete succeeds, the other is the guarded 400, one valid link remains."""
+    statuses = [r.status for r in rs]
+    if sorted(statuses) != [200, 400]:
+        return f"expected exactly one 200 and one 400, got {statuses}: {rs!r}"
+    loser = rs[statuses.index(400)]
+    if loser.code != "LAST_EVIDENCE_OF_REVIEWED_INSIGHT":
+        return f"competing delete rejected for the wrong reason: {loser!r}"
+    kept = ctx["evidence"][statuses.index(400)]
+    remaining = [e["id"] for e in detail["evidence"] if e.get("relationship") == "supports"]
+    if detail["review_status"] != "reviewed" or remaining != [kept]:
+        return f"reviewed insight must keep exactly evidence {kept}; state {detail['review_status']} {remaining}"
+    return None
+
+
+def c04_outcome(rs, detail):
+    """Strict C04 outcome: exactly one of (create hypothesis, unreview) succeeds with the matching guard error."""
+    create, unreview = rs
+    hyps = detail["hypotheses"]
+    if (create.status, unreview.status) == (200, 400):
+        if unreview.code != "INSIGHT_HAS_HYPOTHESES":
+            return f"unreview rejected for the wrong reason: {unreview!r}"
+        if detail["review_status"] != "reviewed" or [h["id"] for h in hyps] != [create.body["id"]]:
+            return f"expected reviewed insight with hypothesis {create.body.get('id')}; got {detail['review_status']} {hyps}"
+        return None
+    if (create.status, unreview.status) == (400, 200):
+        if create.code != "INSIGHT_NOT_REVIEWED":
+            return f"hypothesis creation rejected for the wrong reason: {create!r}"
+        if detail["review_status"] != "draft" or hyps:
+            return f"expected draft insight without hypotheses; got {detail['review_status']} {hyps}"
+        return None
+    return f"expected exactly one success, got {(create.status, unreview.status)}: {rs!r}"
+
+
 @case("C01", "parallel duplicate participation: exactly one row per trial")
 def c01(s):
     def setup(i):
@@ -760,12 +808,7 @@ def c02(s):
         return {"insight": ins["id"], "evidence": evs}
 
     def invariant(ctx, rs):
-        detail = ok(s.owner.call("GET", f"insights/{ctx['insight']}"))
-        if detail["review_status"] == "reviewed" and len(detail["evidence"]) < 1:
-            return "reviewed insight lost all evidence"
-        if sum(1 for r in rs if r.status == 200) > 1:
-            return "both deletes succeeded"
-        return None
+        return c02_outcome(ctx, rs, ok(s.owner.call("GET", f"insights/{ctx['insight']}")))
 
     actions = [lambda ctx, k=k: s.owner.call("DELETE", f"evidence/{ctx['evidence'][k]}") for k in range(2)]
     require_gate(run_trials("C02", s.trials, setup, actions, invariant))
@@ -815,12 +858,7 @@ def c04(s):
         return s.owner.call("POST", f"insights/{ctx['insight']}/review-status", {"review_status": "draft"})
 
     def invariant(ctx, rs):
-        detail = ok(s.owner.call("GET", f"insights/{ctx['insight']}"))
-        if detail["review_status"] == "draft" and detail["hypotheses"]:
-            return "hypothesis attached to a draft insight"
-        if rs[0].status == 200 and rs[1].status == 200:
-            return "both operations succeeded"
-        return None
+        return c04_outcome(rs, ok(s.owner.call("GET", f"insights/{ctx['insight']}")))
 
     require_gate(run_trials("C04", s.trials, setup, [create, unreview], invariant))
 
