@@ -34,13 +34,28 @@ query "survey-waves/{wave_id}/status" verb=POST {
               error = "WAVE_ALREADY_CLOSED: the survey wave is already closed"
             }
 
-            var $closed_at {
-              value = $input.closed_at ?? now
+            // Runtime fix (2026-10-23): `$input.closed_at ?? now` followed by `<= now` rejected every close without
+            // closed_at. The server time is read once (documented `var … = now` form) and only a client-supplied
+            // closed_at is compared with it; no tolerance is added.
+            var $now {
+              value = now
             }
 
-            precondition ($closed_at <= now) {
-              error_type = "inputerror"
-              error = "INVALID_TIMESTAMP: closed_at must not be in the future"
+            var $closed_at {
+              value = $now
+            }
+
+            conditional {
+              if ($input.closed_at != null) {
+                precondition ($input.closed_at <= $now) {
+                  error_type = "inputerror"
+                  error = "INVALID_TIMESTAMP: closed_at must not be in the future"
+                }
+
+                var.update $closed_at {
+                  value = $input.closed_at
+                }
+              }
             }
 
             db.query survey_participations {

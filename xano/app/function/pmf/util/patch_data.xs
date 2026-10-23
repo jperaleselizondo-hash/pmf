@@ -106,7 +106,30 @@ function "pmf/util/patch_data" {
 
   test "clear outside allow-list throws" {
     input = {values: {}, clear: ["product_id"], clearable: ["segment_id"], touch: false}
-    expect.to_throw
+    expect.to_throw {
+      exception = "INVALID_CLEAR_FIELD: product_id cannot be cleared"
+    }
+  }
+
+  test "clear of a required field throws when it is not clearable" {
+    input = {values: {}, clear: ["name"], clearable: ["description"], required: ["name"], touch: false}
+    expect.to_throw {
+      exception = "INVALID_CLEAR_FIELD: name cannot be cleared"
+    }
+  }
+
+  test "clear of an allowed field sets null" {
+    input = {values: {name: null, description: null}, clear: ["description"], clearable: ["description"], touch: false}
+    expect.to_equal ($response) {
+      value = {description: null}
+    }
+  }
+
+  test "set and clear of the same field throws" {
+    input = {values: {description: "x"}, clear: ["description"], clearable: ["description"], touch: false}
+    expect.to_throw {
+      exception = "CONFLICTING_FIELD: description is both set and cleared"
+    }
   }
   guid = "k1FXXopGh-EpDUHrcGkIf6WA-4o"
 }

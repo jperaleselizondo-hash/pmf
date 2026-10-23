@@ -83,8 +83,9 @@ query "survey-waves/{wave_id}/participations" verb=GET {
       value = ($input.page - 1) * $input.per_page
     }
 
+    // `slice` takes offset and LENGTH (Xano filter reference); the former `$offset + per_page` over-returned on page 2+.
     var $items {
-      value = $filtered|slice:$offset:($offset + $input.per_page)
+      value = $filtered|slice:$offset:$input.per_page
     }
   }
 

@@ -82,7 +82,7 @@ Conventions for **all** `PMF App` endpoints unless stated:
 | B1 | `GET products` | page, per_page | paged products (all fields) | only `owner_user_id == $auth.id` | products | require_owner | — | — |
 | B2 | `POST products` | name, description?, core_value?, activation_definition?, value_event_definition? | product | `owner_user_id = $auth.id` server-side; name non-blank | products | require_owner, text/normalize | — | 400 |
 | B3 | `GET products/{product_id}` | — | product + `counts {segments, customers, interviews, survey_waves, insights, hypotheses}` | owned | products, children (counts) | access/product | — | 404 |
-| B4 | `PATCH products/{product_id}` | same fields, all optional | product | owner/product id immutable | products | access/product | — | 400/404 |
+| B4 | `PATCH products/{product_id}` | same fields, all optional; `clear?: text[]` ⊆ {description, core_value, activation_definition, value_event_definition} | product | owner/product id immutable | products | access/product | — | 400/404 |
 | — | *(no product DELETE in V1 — decision U8)* | | | | | | | |
 | B5 | `GET products/{product_id}/segments` | page, per_page | paged segments (+`customer_count`) | owned product | segments, customers | access/product | — | 404 |
 | B6 | `POST products/{product_id}/segments` | name, description?, criteria? | segment | unique (product_id, name) — pre-check + index | segments | access/product, db/unique_error | — | 400 duplicate name |
@@ -631,7 +631,7 @@ Original inventory: **52 new** endpoints (+3 existing auth). Proposed reductions
 | U13 | Parent-row locking (no-op self-update inside `db.transaction`) is **provisional**. It is accepted for critical invariants only after isolated concurrency tests C01–C04 pass; a failed strategy is not acceptable and blocks deployment. |
 | U14 | Historical timestamps allowed. `interviews.conducted_at` ≤ now + 5 minutes. Survey: `started_at ≤ responded_at ≤ now + 5 minutes` (clock-skew tolerance), `invited_at ≤ responded_at` when both set, actual historical response times preserved. `closed_at` optional on close: ≥ latest `responded_at`, ≤ now. |
 | Evidence | Survey evidence requires `source_field` ∈ {`beneficiary_description`, `main_benefit`, `improvement_request`}, non-blank on the cited row, and `responded_at` set. Interview evidence: `source_field` optional; when given ∈ {`notes`, `transcript`, `existing_alternatives`, `problem_context`} and non-blank; when omitted the interview must have at least one non-blank raw field. Evidence source ids are immutable. |
-| PATCH | Optional fields: omitted/null = unchanged. Nullable fields are cleared only via an explicit `clear: text[]` input listing field names (validated against an allow-list). Blank founder text normalizes to null. |
+| PATCH | Optional fields: omitted/null = unchanged. Nullable fields are cleared only via an explicit `clear: text[]` input listing field names (validated against an allow-list; required fields are never clearable; unknown names → 400 `INVALID_CLEAR_FIELD`; a field both set and cleared → 400 `CONFLICTING_FIELD`). Blank founder text normalizes to null, i.e. on PATCH it means unchanged — whitespace never clears a field (runtime finding 2026-10-23). |
 
 ## R8.2 Conditions still requiring verification (not approved as working)
 1. Isolated environment availability, entitlement and cost (ephemeral tenant preferred; sandbox only if unused by Goodz).

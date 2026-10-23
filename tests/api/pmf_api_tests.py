@@ -429,8 +429,13 @@ def w07(s):
 def w08(s):
     wid = s.fx["W1"]["id"]
     rejected(s.owner.call("POST", f"survey-waves/{wid}/status", {"action": "close", "closed_at": s.now - 30 * DAY}), 400, "INVALID_TIMESTAMP")
+    future = s.owner.call("POST", f"survey-waves/{wid}/status", {"action": "close", "closed_at": int(time.time() * 1000) + 3_600_000})
+    rejected(future, 400, "INVALID_TIMESTAMP")
+    expect("in the future" in str(future.body), f"future close rejected for the wrong reason: {future!r}")
+    before = int(time.time() * 1000)
     closed = ok(s.owner.call("POST", f"survey-waves/{wid}/status", {"action": "close"}))
     expect(closed["state"] == "closed", "not closed")
+    expect(closed["closed_at"] is not None and abs(closed["closed_at"] - before) < 10 * 60_000, f"default closed_at not server time: {closed['closed_at']!r}")
     rejected(s.owner.call("POST", f"survey-waves/{wid}/participations", {"customer_ids": [s.fx["C6"]["id"]]}), 400, "WAVE_CLOSED")
     rejected(s.owner.call("PATCH", f"participations/{s.fx['P']['C3']['id']}", {"responded_at": s.now - DAY, "disappointment_level": "not"}), 400, "WAVE_CLOSED")
     rejected(s.owner.call("DELETE", f"participations/{s.fx['P']['C4']['id']}"), 400, "WAVE_CLOSED")
@@ -524,7 +529,7 @@ def p06(s):
         a2 = s.report(wid, segment_id=s.fx["A2"]["id"])["selected"]
         a1 = s.report(wid, segment_id=s.fx["A1"]["id"])["selected"]
         expect(a2["valid_response_count"] == 0 and a2["pmf_percent"] is None, f"A2 picked up C1: {a2}")
-        expect(a1["very_count"] == 1, "A1 lost C1's snapshot response")
+        expect(a1["counts"]["very"] == 1, "A1 lost C1's snapshot response")
     finally:
         ok(s.owner.call("PATCH", f"customers/{s.fx['C1']['id']}", {"segment_id": s.fx["A1"]["id"]}))
 
@@ -551,6 +556,9 @@ def p09(s):
     names = [w["wave"]["name"] for w in ov["waves"]]
     expect({"W1", "W2", "W3"} <= set(names), f"waves {names}")
     expect(ov["customers"]["total"] >= 7, "customer total")
+    expect(ov["recent_experiments"] == [], f"recent_experiments must be [] before any experiment: {ov['recent_experiments']!r}")
+    empty = ok(s.owner.call("GET", f"products/{s.fx['B']['id']}/lookups"))
+    expect(empty["waves"] == [] and empty["reviewed_insights"] == [] and len(empty["segments"]) == 1, f"empty lookups {empty!r}")
 
 
 # ---------------- Evidence & insights ----------------
@@ -821,6 +829,8 @@ def x01(s):
     expect(hyp["status"] == "validated" and hyp["experiments"][0]["decision"] == "adopt", "validation chain lost")
     interview = ok(s.owner.call("GET", f"interviews/{s.fx['I1']['id']}"))
     expect(interview["notes"] == "  Reconciling invoices takes two hours every Friday.  " and interview["cited"], "raw evidence altered")
+    recent = ok(s.owner.call("GET", f"products/{s.fx['A']['id']}/overview"))["recent_experiments"]
+    expect(any(e["id"] == s.fx["EXP"]["id"] for e in recent) and len(recent) <= 5, f"overview recent_experiments {recent!r}")
     lookups = ok(s.owner.call("GET", f"products/{s.fx['A']['id']}/lookups"))
     expect(any(i["id"] == s.fx["INS"]["id"] for i in lookups["reviewed_insights"]), "lookups missing reviewed insight")
 
@@ -832,8 +842,16 @@ def x02(s):
     expect(detail["counts"]["segments"] >= 2 and detail["counts"]["customers"] >= 7 and detail["counts"]["interviews"] >= 2, f"counts {detail['counts']}")
     updated = ok(s.owner.call("PATCH", f"products/{a}", {"description": "Synthetic description"}))
     expect(updated["description"] == "Synthetic description", "product description not updated")
-    expect(ok(s.owner.call("PATCH", f"products/{a}", {"description": "   "}))["description"] is None, "blank text must clear")
-    rejected(s.owner.call("PATCH", f"products/{a}", {"name": "  "}), 400, "FIELD_REQUIRED")
+    expect(ok(s.owner.call("PATCH", f"products/{a}", {"description": None}))["description"] == "Synthetic description", "null must leave the field unchanged")
+    expect(ok(s.owner.call("PATCH", f"products/{a}", {}))["description"] == "Synthetic description", "omitted must leave the field unchanged")
+    expect(ok(s.owner.call("PATCH", f"products/{a}", {"clear": ["description"]}))["description"] is None, "explicit clear must null the field")
+    blank = s.owner.call("PATCH", f"products/{a}", {"name": "  "})
+    expect((blank.status == 400 and blank.code == "FIELD_REQUIRED") or (blank.status == 200 and blank.body["name"].startswith("SYNTH")),
+           f"blank required name must be rejected or ignored, never stored: {blank!r}")
+    rejected(s.owner.call("PATCH", f"products/{a}", {"clear": ["name"]}), 400, "INVALID_CLEAR_FIELD")
+    rejected(s.owner.call("PATCH", f"products/{a}", {"clear": ["owner_user_id"]}), 400, "INVALID_CLEAR_FIELD")
+    rejected(s.owner.call("PATCH", f"products/{a}", {"core_value": "x", "clear": ["core_value"]}), 400, "CONFLICTING_FIELD")
+    expect(ok(s.owner.call("GET", f"products/{a}"))["name"].startswith("SYNTH"), "required name must survive clear attempts")
     segments = ok(s.owner.call("GET", f"products/{a}/segments"))["items"]
     expect(all("customer_count" in x for x in segments), "segment customer_count missing")
     rejected(s.owner.call("PATCH", f"segments/{fx['A2']['id']}", {"name": "Solo founders"}), 400, "DUPLICATE_SEGMENT_NAME")

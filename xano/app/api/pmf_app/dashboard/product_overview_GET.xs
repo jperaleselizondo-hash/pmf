@@ -82,9 +82,15 @@ query "products/{product_id}/overview" verb=GET {
 
       where = $db.insights.product_id == $product.id
       sort = {created_at: "desc"}
-      return = {type: "list", paging: {page: 1, per_page: 5}}
+      return = {type: "list"}
       output = ["id", "hypothesis_id", "name", "started_at", "ended_at", "conclusion", "decision", "created_at"]
-    } as $recent_experiments
+    } as $experiments
+
+    // Runtime fix (2026-10-23): the paged result had no `items` key on the server (500 with no experiments).
+    // A plain list is always an array; keep the five most recent (`slice` takes offset and length).
+    var $recent_experiments {
+      value = $experiments|slice:0:5
+    }
 
     var $by_lifecycle {
       value = {prospect: (($customers|filter:$$.lifecycle_stage == "prospect")|count), active: (($customers|filter:$$.lifecycle_stage == "active")|count), former: (($customers|filter:$$.lifecycle_stage == "former")|count)}
@@ -108,7 +114,7 @@ query "products/{product_id}/overview" verb=GET {
     waves             : $wave_summaries
     insights          : $insight_counts
     hypotheses        : $hypothesis_counts
-    recent_experiments: $recent_experiments.items
+    recent_experiments: $recent_experiments
   }
   guid = "4B3cOTCX1CaXH4vsJlchi8m7LSs"
 }

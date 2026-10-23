@@ -1,4 +1,4 @@
-// PMF Engine: update product definitions (owner and id are immutable; blank optional text clears)
+// PMF Engine: update product definitions (owner and id are immutable); optional fields are cleared only via `clear`
 query "products/{product_id}" verb=PATCH {
   api_group = "PMF App"
   auth = "user"
@@ -10,6 +10,7 @@ query "products/{product_id}" verb=PATCH {
     text? core_value? filters=trim
     text? activation_definition? filters=trim
     text? value_event_definition? filters=trim
+    text[]? clear?
   }
 
   stack {
@@ -23,8 +24,10 @@ query "products/{product_id}" verb=PATCH {
 
     function.run "pmf/util/patch_data" {
       input = {
-        values  : {name: $input.name, description: $input.description, core_value: $input.core_value, activation_definition: $input.activation_definition, value_event_definition: $input.value_event_definition}
-        required: ["name"]
+        values   : {name: $input.name, description: $input.description, core_value: $input.core_value, activation_definition: $input.activation_definition, value_event_definition: $input.value_event_definition}
+        clear    : $input.clear
+        clearable: ["description", "core_value", "activation_definition", "value_event_definition"]
+        required : ["name"]
       }
     } as $data
 

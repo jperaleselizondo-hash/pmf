@@ -30,12 +30,16 @@ query "products/{product_id}/lookups" verb=GET {
         db.query segments {
           where = $db.segments.product_id == $product.id
           sort = {name: "asc"}
-          return = {type: "list", paging: {page: 1, per_page: 500}}
+          return = {type: "list"}
           output = ["id", "name"]
         } as $segments
 
+        var.update $segments {
+          value = $segments|slice:0:500
+        }
+
         var.update $result {
-          value = $result|set:"segments":$segments.items
+          value = $result|set:"segments":$segments
         }
       }
     }
@@ -45,12 +49,16 @@ query "products/{product_id}/lookups" verb=GET {
         db.query customers {
           where = $db.customers.product_id == $product.id
           sort = {name: "asc"}
-          return = {type: "list", paging: {page: 1, per_page: 500}}
+          return = {type: "list"}
           output = ["id", "name", "external_id", "segment_id"]
         } as $customers
 
+        var.update $customers {
+          value = $customers|slice:0:500
+        }
+
         var.update $result {
-          value = $result|set:"customers":$customers.items
+          value = $result|set:"customers":$customers
         }
       }
     }
@@ -60,12 +68,16 @@ query "products/{product_id}/lookups" verb=GET {
         db.query survey_waves {
           where = $db.survey_waves.product_id == $product.id
           sort = {created_at: "desc"}
-          return = {type: "list", paging: {page: 1, per_page: 500}}
+          return = {type: "list"}
           output = ["id", "name", "started_at", "closed_at"]
         } as $waves
 
+        var.update $waves {
+          value = $waves|slice:0:500
+        }
+
         var.update $result {
-          value = $result|set:"waves":$waves.items
+          value = $result|set:"waves":$waves
         }
       }
     }
@@ -80,12 +92,16 @@ query "products/{product_id}/lookups" verb=GET {
           where = $db.customers.product_id == $product.id
           sort = {conducted_at: "desc"}
           eval = {customer_name: $db.customers.name}
-          return = {type: "list", paging: {page: 1, per_page: 500}}
+          return = {type: "list"}
           output = ["id", "customer_id", "conducted_at", "customer_name"]
         } as $interviews
 
+        var.update $interviews {
+          value = $interviews|slice:0:500
+        }
+
         var.update $result {
-          value = $result|set:"interviews":$interviews.items
+          value = $result|set:"interviews":$interviews
         }
       }
     }
@@ -95,12 +111,16 @@ query "products/{product_id}/lookups" verb=GET {
         db.query insights {
           where = $db.insights.product_id == $product.id && $db.insights.review_status == "reviewed"
           sort = {created_at: "desc"}
-          return = {type: "list", paging: {page: 1, per_page: 500}}
+          return = {type: "list"}
           output = ["id", "type", "statement"]
         } as $reviewed
 
+        var.update $reviewed {
+          value = $reviewed|slice:0:500
+        }
+
         var.update $result {
-          value = $result|set:"reviewed_insights":$reviewed.items
+          value = $result|set:"reviewed_insights":$reviewed
         }
       }
     }
