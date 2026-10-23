@@ -170,11 +170,12 @@
 
 ## Phase 3 runtime remediation prepared — NOT deployed (2026-10-23)
 - `main` `ac63b0e`: deterministic fixes for V02–V04 (`validate_experiment` `|get:`), W08/C03 (wave close reads server time once; only a client `closed_at` is compared; no tolerance), P09 (overview plain list + `slice:0:5`; lookups same pattern), participation pagination (`slice` is offset+**length**), X02 (product PATCH explicit `clear` allow-list; contract: whitespace never clears), P06 test assertion. 107 offline tests pass, including replays of the original faulty responses.
-- Branch `concurrency/real-row-lock` `7ccd608` (proposal, unmerged): `pmf/lock/insight` and `pmf/lock/wave` set `updated_at = now` (a real row change) instead of rewriting an unchanged value; T01 rollback probe added to I03. No schema change. Fallback if C02/C04 still fail: unique-key mutex table (schema change, separate approval).
+- Concurrency fix (owner-approved, merged `6f6a2a8`, **not deployed, not yet proven**): `pmf/lock/insight` and `pmf/lock/wave` set `updated_at = now` (a real row change) inside the caller's `db.transaction`, then re-read the row with `db.get`. All 9 insight-family and all 6 wave-family write routes call the lock first inside their transaction. C02/C04 now require the single serialized outcome (exactly one success, the other the specific guard 400, matching final state); any 500 or ambiguity fails. T01 (I03) adds a positive control and >1 s pauses; it evidences rollback only, not serialization. No schema change. Fallback if C02/C04 still fail: unique-key mutex table (schema change, separate approval).
+- Deployment inventory vs live (comparator: 9 unexplained = the 9 intended; all others equivalent/known gates): functions `pmf/validation/validate_experiment`, `pmf/util/patch_data`, `pmf/lock/insight`, `pmf/lock/wave`; endpoints `POST survey-waves/{wave_id}/status`, `GET products/{product_id}/overview`, `GET products/{product_id}/lookups`, `GET survey-waves/{wave_id}/participations`, `PATCH products/{product_id}`.
 - Wave-close root cause is a strong hypothesis (`$input.closed_at ?? now` evaluated so that `<= now` fails), not proven: bare `now` comparisons were verified correct on the server via `function run pmf/survey/wave_state`, and the server clock matches.
 
 ## One next action
-Owner review of the concurrency branch; then one coordinated dry-run (expected 9 UPDATEs: 4 functions, 5 endpoints), owner push, server unit tests, full HTTP suite, cleanup.
+Owner temporarily enables direct push; one coordinated dry-run (expected 9 UPDATEs: 4 functions, 5 endpoints), owner push, server unit tests, full HTTP suite, cleanup.
 
 ## Approved-stack status
 Xano selected; frontend still undecided between WeWeb and a coded frontend deployed on Vercel.
