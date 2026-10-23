@@ -1,6 +1,6 @@
 # PMF Engine — Backend handoff (Phase 3, 2026-10-23)
 
-Read this before resuming PMF Engine work. The project is **paused** after backend QA so the owner can return to the Goodz launch. No frontend exists; the WeWeb vs coded-frontend-on-Vercel decision is still open.
+Read this before resuming PMF Engine work. **Phase 3 backend V1 was formally accepted on 2026-10-23** and the project is **PAUSED** until after the Goodz launch. No frontend exists; the WeWeb vs coded-frontend-on-Vercel decision is still open.
 
 ## What is live
 - Xano instance `xgjc-aodb-3a7q` (shared with Goodz — never target workspace 1), workspace `pmf` ID 2, branch `v1` (live, only branch). Always pass `-p pmf -w 2`.
@@ -18,9 +18,9 @@ Read this before resuming PMF Engine work. The project is **paused** after backe
 | Check | Status |
 |---|---|
 | S01/S02 (401/403 sweeps), S04–S07 | Passed (automated). |
-| S03 owner variable unset → 500 | **Code review passed; live runtime check NOT EXECUTED** (owner decision: do not unset `PMF_OWNER_USER_ID` live). `pmf/auth/require_owner` fails closed on a missing/blank value. |
-| S08 request-history masking | **Partial.** Read-only scan of 5,071 history entries: sensitive inputs (customer name/email, interview notes) masked; no test tokens or Authorization headers stored. Response **outputs** are retained and contain sensitive fields → owner should reduce/disable output history for `PMF App` in the Xano UI. |
-| S09 `auth/signup` External Access blocked | **Manual UI check pending** (never automated: an unblocked call could create a user). |
+| S03 owner variable unset → 500 | **Code review passed; live runtime test deliberately deferred** (owner decision: do not unset `PMF_OWNER_USER_ID` live). `pmf/auth/require_owner` fails closed on a missing/blank value. |
+| S08 request-history masking | **Completed (owner-confirmed UI change).** Read-only scan of 5,071 entries: sensitive inputs masked, no tokens or Authorization headers stored; response-output retention for `PMF App` then reduced by the owner in the Xano UI. |
+| S09 `auth/signup` External Access blocked | **Completed (owner-confirmed UI verification: OFF).** Never automated. |
 
 ## Known residual risks
 - Concurrency rests on `pmf/lock/*` writing `updated_at = now` inside `db.transaction` (real row lock). Live evidence: the same harness detected 20/25 and 21/25 violations under the old no-op lock and 0 under the new one; no deliberate live negative control was run. Side effect: parent `updated_at` also moves on child writes.
@@ -29,10 +29,10 @@ Read this before resuming PMF Engine work. The project is **paused** after backe
 - Blank text on PATCH means "unchanged"; fields are cleared only with an explicit `clear` allow-list (D-039).
 - `allow_push` has repeatedly stayed on after pushes; always verify `xano workspace get -p pmf -w 2 -o json` shows `allow_push: false`.
 
-## Owner actions outstanding
-1. Revoke the two temporary Metadata API tokens (Workspace Content Read, and Read + Delete for cleanup), then delete the local file `~/.config/pmf/test.env` (it also holds expired/obsolete session tokens). Neither token is in Git.
-2. S08: reduce/disable response-output request history for `PMF App`.
-3. S09: confirm `auth/signup` External Access is OFF.
+## Closed owner actions (owner-confirmed 2026-10-23)
+- Both temporary Metadata API tokens revoked; local `~/.config/pmf/test.env` deleted.
+- S08 response-output history reduced for `PMF App`; S09 signup External Access OFF.
+- `allow_push: false` at the last CLI verification.
 
 ## Resuming later
 - Runbook: [API_V1_RUNBOOK.md](API_V1_RUNBOOK.md) (dry-run gate → owner interactive push → read-back → unit tests → HTTP suite → cleanup). A re-run needs a new synthetic test user and new temporary Metadata tokens.

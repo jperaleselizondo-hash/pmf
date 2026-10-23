@@ -188,8 +188,15 @@
 - S03: code review passed, live runtime NOT EXECUTED (owner decision). S08: inputs masked, no tokens stored; response outputs retained with sensitive fields → owner UI action. S09: manual UI check pending.
 - **Phase 3 is not marked fully accepted** until S08 history minimization and S09 are confirmed by the owner (S03 runtime explicitly deferred). Handoff: [BACKEND_HANDOFF.md](BACKEND_HANDOFF.md).
 
+## Phase 3 backend V1 ACCEPTED (2026-10-23) — PMF Engine PAUSED
+- Formally accepted on 2026-10-23: server unit tests **66/66**, automated HTTP tests **64/64**, concurrency **100/100 trials** (C01–C04 × 25) with zero observed invariant violations.
+- Ten business tables empty; temporary test user removed; `allow_push: false` (last CLI verification, 2026-10-23).
+- Owner-confirmed: both temporary Metadata API tokens revoked and `~/.config/pmf/test.env` deleted; S08 request-history output retention reduced for `PMF App` (UI); S09 `auth/signup` External Access OFF (UI).
+- S03: code-review pass only; live runtime test deliberately deferred.
+- Residual concurrency risks remain as documented in [BACKEND_HANDOFF.md](BACKEND_HANDOFF.md) (no live negative control; source-deletion three-way race uncovered; lock relies on `db.transaction` row locks).
+
 ## One next action
-Owner: revoke the two temporary Metadata API tokens, delete `~/.config/pmf/test.env`, minimize `PMF App` response history (S08), confirm signup External Access OFF (S09). Then PMF Engine is paused until after the Goodz launch.
+None while paused. After the Goodz launch: frontend decision (WeWeb vs coded frontend on Vercel), per [BACKEND_HANDOFF.md](BACKEND_HANDOFF.md).
 
 ## Approved-stack status
 Xano selected; frontend still undecided between WeWeb and a coded frontend deployed on Vercel.

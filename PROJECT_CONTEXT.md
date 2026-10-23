@@ -10,9 +10,9 @@ The idea combines Eric Migicovsky's Y Combinator talk on customer interviews wit
 
 ## Current status
 - GitHub repository: https://github.com/jperaleselizondo-hash/pmf (private).
-- **Backend (Xano `pmf`, workspace 2, branch `v1`):** 10 business tables and the `PMF App` API (48 endpoints, 34 functions) are live and passed automated QA on 2026-10-23 (unit 66/0, HTTP 64/64). Tables are empty. See [Backend handoff](docs/BACKEND_HANDOFF.md).
+- **Backend (Xano `pmf`, workspace 2, branch `v1`):** 10 business tables and the `PMF App` API (48 endpoints, 34 functions) are live and formally accepted on 2026-10-23 (unit 66/66, HTTP 64/64, concurrency 100/100 trials). Tables are empty. See [Backend handoff](docs/BACKEND_HANDOFF.md).
 - **Frontend:** not started; WeWeb vs coded frontend on Vercel is undecided.
-- **Project paused** after backend QA until after the Goodz launch. Outstanding owner actions are listed in the handoff.
+- **Phase 3 backend V1 accepted 2026-10-23. PMF Engine is PAUSED until after the Goodz launch.**
 
 ## Approved direction
 - **Audience:** one owner/operator for the first release; not a multi-tenant SaaS.
