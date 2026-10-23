@@ -168,8 +168,13 @@
 - C01 passed, but without a negative control (not permitted live) that is not proof. C03 was not exercised (close bug).
 - `allow_push` was still **true** after the second push (CLI, 2026-10-23); the owner must disable it.
 
+## Phase 3 runtime remediation prepared — NOT deployed (2026-10-23)
+- `main` `ac63b0e`: deterministic fixes for V02–V04 (`validate_experiment` `|get:`), W08/C03 (wave close reads server time once; only a client `closed_at` is compared; no tolerance), P09 (overview plain list + `slice:0:5`; lookups same pattern), participation pagination (`slice` is offset+**length**), X02 (product PATCH explicit `clear` allow-list; contract: whitespace never clears), P06 test assertion. 107 offline tests pass, including replays of the original faulty responses.
+- Branch `concurrency/real-row-lock` `7ccd608` (proposal, unmerged): `pmf/lock/insight` and `pmf/lock/wave` set `updated_at = now` (a real row change) instead of rewriting an unchanged value; T01 rollback probe added to I03. No schema change. Fallback if C02/C04 still fail: unique-key mutex table (schema change, separate approval).
+- Wave-close root cause is a strong hypothesis (`$input.closed_at ?? now` evaluated so that `<= now` fails), not proven: bare `now` comparisons were verified correct on the server via `function run pmf/survey/wave_state`, and the server clock matches.
+
 ## One next action
-Owner decision on the concurrency design (C02/C04) and the blank-clear contract (X02); then one approved source fix batch for V02–V04, W08/C03, P09 and the P06 test, dry-run, owner push, unit tests, full HTTP suite, cleanup.
+Owner review of the concurrency branch; then one coordinated dry-run (expected 9 UPDATEs: 4 functions, 5 endpoints), owner push, server unit tests, full HTTP suite, cleanup.
 
 ## Approved-stack status
 Xano selected; frontend still undecided between WeWeb and a coded frontend deployed on Vercel.
