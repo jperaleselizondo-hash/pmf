@@ -148,8 +148,28 @@
 - The repository source stays authoritative; Xano's re-printed text must never be adopted as source (some printed forms omit parentheses required by greedy filter binding).
 - Not verified by Claude: "no new business records" after the push (needs owner UI check or the scoped Metadata token); Goodz not inspected (all commands pinned to `-w 2`).
 
+## Phase 3 runtime QA — first live run (2026-10-23)
+**Status: runtime validation FAILED; Phase 3 not accepted.** Synthetic data only; all ten business tables verified empty after cleanup.
+
+- Defect fix 1 (`0a41882`, owner push): `pmf/report/compute_pmf` (step-by-step `|divide:`/`|multiply:`, removing the "Array to string conversion" 500) and `pmf/survey/validate_response` (`|get:` for optional keys). Read-back: only these 2 functions changed, GUIDs unchanged. `function run` on the server: 1/3 → 33.333…, 0/1 → 0, 2/3 → 66.666…, 0 valid → null; distribution uses the valid denominator.
+- Defect fix 2 (`aa4ed9c`, owner push): six create endpoints (`products`, `…/segments`, `…/survey-waves`, `…/insights`, `insights/{id}/hypotheses`, `hypotheses/{id}/experiments` POST) read `patch_data` output with `|get:`; lint rule added. Read-back: exactly these 6 changed, GUIDs unchanged.
+- Server unit tests: **57 passed, 0 failed**. POST products canary: 200, blank/omitted optional fields null; removed by verified cleanup.
+- HTTP suite (`--target live-pmf --trials 25`): first attempt aborted at fixture setup on a transient nginx 502 (identical request then succeeded; partial data cleaned). Full run: **50 passed, 14 failed/error, 3 manual**. Cleanup: 241 verified synthetic rows deleted, ten tables back to zero. Test user (id 2) and the cleanup token are kept for the re-run.
+
+  | Tests | Observed | Probable cause (read-only analysis) |
+  |---|---|---|
+  | V02, V03, V04 (+V05, X01 cascade) | 500 `Unable to locate var: e.ended_at` | server stored the experiment `$state` in backtick expression mode (D-036 gate); `validate_experiment` uses dotted access → needs `|get:` |
+  | W08, C03 (+W09, R05 cascade) | 400 `closed_at must not be in the future` on close without `closed_at` | bare `now` comparison in `wave_status`; working checks use `now|transform_timestamp:"+5 minutes"` (cause not fully proven) |
+  | P09 | 500 `Unable to locate var: recent_experiments.items` | paged joined query result lacks `items` (here with zero experiments); needs a null-safe read |
+  | X02 | blank text did not clear `description` | `text? … filters=trim` input appears to turn `"   "` into null before `patch_data`, so the "blank clears" rule is unreachable over HTTP — contract decision needed |
+  | P06 | test KeyError `very_count` | **test defect**: contract §5 returns `counts.very` |
+  | C02, C04 | invariant violated in 20/25 and 21/25 trials (100% overlap) | `pmf/lock/*` "rewrite an unchanged column" does not serialize concurrent requests (U13 refuted) — needs a design decision |
+
+- C01 passed, but without a negative control (not permitted live) that is not proof. C03 was not exercised (close bug).
+- `allow_push` was still **true** after the second push (CLI, 2026-10-23); the owner must disable it.
+
 ## One next action
-Runtime validation preparation (owner actions, each separately approved): set `PMF_OWNER_USER_ID` from the verified `auth/me` id; create one `@pmf-test.invalid` non-owner user; create a Metadata API token scoped to Workspace Content Read/Delete; confirm the ten business tables are still empty. Then run the HTTP suite with `--target live-pmf` (runbook §4), the server-side unit tests, and the manual checks; every runtime gate above and C01–C04 must pass (or the concurrency residual risk be explicitly accepted). Cleanup follows as a separate approval.
+Owner decision on the concurrency design (C02/C04) and the blank-clear contract (X02); then one approved source fix batch for V02–V04, W08/C03, P09 and the P06 test, dry-run, owner push, unit tests, full HTTP suite, cleanup.
 
 ## Approved-stack status
 Xano selected; frontend still undecided between WeWeb and a coded frontend deployed on Vercel.
