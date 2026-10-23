@@ -181,8 +181,15 @@
 - Remaining failures: V02, V03 (invalid experiments accepted, 200), V04, V05, X01, X02 (cascade: unexpected experiments/`EXP` missing). Cause verified with `function run`: `validate_experiment` rejects object input correctly but returns true for a text value; the server stores the endpoint's inline `$state` object in expression mode, so the validator received a non-object. Fix prepared (not deployed): `POST hypotheses/{id}/experiments` passes the `patch_data` object directly; `validate_experiment` rejects non-object state (fail closed).
 - Cleanup: 295 verified synthetic rows deleted; ten tables zero. Test user id 2 and cleanup token kept for the final re-run.
 
+## Phase 3 final run — automated acceptance PASSED; full acceptance pending manual checks (2026-10-23)
+- Experiment-validation fix (`9cf89ed`): dry-run exactly 2 UPDATEs; owner push; read-back exactly those 2 changed, GUIDs unchanged, comparator UNEXPLAINED 0; `allow_push: false` verified via CLI.
+- Server unit tests **66/0**. HTTP suite **64/64 passed** (3 manual). C01–C04: 100 trials total (25 each), 0 violations, overlap gate (≥80%) met. V02/V03 rejected every invalid experiment with `EXPERIMENT_DATES` / `EXPERIMENT_DECISION` / `EXPERIMENT_CONCLUSION`; the table scan before cleanup found 2 experiment rows, both valid.
+- Cleanup: 249 synthetic rows deleted + test user id 2 removed; ten tables verified zero; deleted user's token → 403 `NOT_OWNER`.
+- S03: code review passed, live runtime NOT EXECUTED (owner decision). S08: inputs masked, no tokens stored; response outputs retained with sensitive fields → owner UI action. S09: manual UI check pending.
+- **Phase 3 is not marked fully accepted** until S08 history minimization and S09 are confirmed by the owner (S03 runtime explicitly deferred). Handoff: [BACKEND_HANDOFF.md](BACKEND_HANDOFF.md).
+
 ## One next action
-Dry-run expecting exactly 2 UPDATEs (`pmf/validation/validate_experiment`, `POST hypotheses/{hypothesis_id}/experiments`), owner push, unit tests, full HTTP suite, cleanup incl. test user, revoke tokens.
+Owner: revoke the two temporary Metadata API tokens, delete `~/.config/pmf/test.env`, minimize `PMF App` response history (S08), confirm signup External Access OFF (S09). Then PMF Engine is paused until after the Goodz launch.
 
 ## Approved-stack status
 Xano selected; frontend still undecided between WeWeb and a coded frontend deployed on Vercel.

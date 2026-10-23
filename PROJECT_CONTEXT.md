@@ -1,6 +1,6 @@
 # PMF Engine — Project Context
 
-_Last updated: 2026-10-22. Source of truth for implementation handoffs._
+_Last updated: 2026-10-23. Source of truth for implementation handoffs._
 
 ## Mission
 Build a personal-use web application that helps a founder systematically discover and improve software product-market fit (PMF). It connects original customer evidence to research findings, testable hypotheses, experiments, and decisions. It is not merely a survey dashboard.
@@ -10,9 +10,9 @@ The idea combines Eric Migicovsky's Y Combinator talk on customer interviews wit
 
 ## Current status
 - GitHub repository: https://github.com/jperaleselizondo-hash/pmf (private).
-- **Design baseline:** initial system logic and technology-independent 10-table model are documented.
-- **Implementation:** user has created a Xano workspace named `pmf` (not independently inspected); schema/API/auth are not implemented or verified. No frontend is built and no MCP edits have been made for this project.
-- **Next task:** read-only inspection of the Xano workspace named `pmf` and its available Claude Code/MCP access, then propose a physical Xano schema implementing the documented logical model. Frontend inspection/selection can wait. Obtain approval before any changes.
+- **Backend (Xano `pmf`, workspace 2, branch `v1`):** 10 business tables and the `PMF App` API (48 endpoints, 34 functions) are live and passed automated QA on 2026-10-23 (unit 66/0, HTTP 64/64). Tables are empty. See [Backend handoff](docs/BACKEND_HANDOFF.md).
+- **Frontend:** not started; WeWeb vs coded frontend on Vercel is undecided.
+- **Project paused** after backend QA until after the Goodz launch. Outstanding owner actions are listed in the handoff.
 
 ## Approved direction
 - **Audience:** one owner/operator for the first release; not a multi-tenant SaaS.
